@@ -1,0 +1,50 @@
+name: inventary_app_production
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_lints: ^4.0.0
+  get_storage: ^2.0.3
+  file_picker: ^5.0.0
+  mobile_scanner: ^5.2.3
+  rflutter_alert: any
+  google_fonts: any
+  flutter_dropdown_search: any
+  flutter_overlay_loader: any
+  dio: 4.0.0
+  fluttertoast: any
+  intl: any
+  mime: ^1.0.0
+  http: any
+  xml: any
+  flutter_spinkit: ^5.1.0
+  animated_text_kit: ^4.2.1
+  workmanager: ^0.5.0
+  device_info_plus: ^10.0.0
+  connectivity_plus: any
+  carousel_slider: any
+  in_app_purchases_paywall_ui: any
+  purchases_flutter: ^8.1.2
+  flutter_speed_dial: ^7.0.0
+  permission_handler: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/appicon (2).png
+flutter_icons:
+  android: "assets/images/appicon (2).png"
+  ios: "assets/images/appicon (2).png"
