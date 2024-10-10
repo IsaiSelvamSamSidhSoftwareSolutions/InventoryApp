@@ -11,19 +11,21 @@ class ActiveDevicesPage extends StatefulWidget {
 class _ActiveDevicesPageState extends State<ActiveDevicesPage> {
   List<dynamic> _devices = [];
   final box = GetStorage();
-  final TextEditingController _emailController = TextEditingController();
   String? token;
+  String? email;
   bool isLoading = false;
 
   @override
   void initState() {
     super.initState();
     token = box.read('token'); // Get JWT token from GetStorage
+    email = box.read('email');
+    print("email is -- $email");// Get email from GetStorage
   }
 
-  Future<void> _fetchActiveDevices(String email) async {
+  Future<void> _fetchActiveDevices() async {
     // Validate email format
-    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email)) {
+    if (email == null || !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email!)) {
       print('Invalid email format');
       setState(() {
         isLoading = false;
@@ -44,7 +46,6 @@ class _ActiveDevicesPageState extends State<ActiveDevicesPage> {
         final data = json.decode(response.body);
         setState(() {
           _devices = (data['data']['devices'] as List)
-              .where((device) => device['isActive'] == true)
               .where((device) => device['isActive'] == true)
               .toList();
 
@@ -72,27 +73,19 @@ class _ActiveDevicesPageState extends State<ActiveDevicesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-          title: Text('Active Devices' , style:TextStyle(color: Colors.white),),
+        title: Text('Active Devices', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.blueAccent,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            TextField(
-              controller: _emailController,
-              decoration: InputDecoration(
-                labelText: 'Enter your email',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            SizedBox(height: 16),
             ElevatedButton(
               onPressed: () {
                 setState(() {
                   isLoading = true;
                 });
-                _fetchActiveDevices(_emailController.text);
+                _fetchActiveDevices();
               },
               child: Text('Fetch Active Devices'),
             ),

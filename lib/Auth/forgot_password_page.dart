@@ -164,7 +164,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Forgot Password' ,style:TextStyle(color: Colors.white)),
-        backgroundColor: Colors.lightBlueAccent, // Consistent color with login
+        backgroundColor: Colors.blue, // Consistent color with login
         elevation: 0,
       ),
       body: Center(

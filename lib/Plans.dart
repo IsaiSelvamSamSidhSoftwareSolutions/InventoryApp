@@ -1,142 +1,3 @@
-// import 'package:flutter/material.dart';
-// import 'package:http/http.dart' as http;
-// import 'dart:convert';
-// import 'package:get_storage/get_storage.dart';
-//
-// class PlansScreen extends StatefulWidget {
-//   @override
-//   _PlansScreenState createState() => _PlansScreenState();
-// }
-//
-// class _PlansScreenState extends State<PlansScreen> {
-//   List<dynamic> plans = [];
-//   bool isLoading = true;
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     fetchPlans();
-//   }
-//
-//   Future<void> fetchPlans() async {
-//     final box = GetStorage();
-//     final String? token = box.read('token');
-//
-//     final response = await http.get(
-//       Uri.parse('https://iscandata.com/api/v1/plans'),
-//       headers: {
-//         'Authorization': 'Bearer $token',
-//       },
-//     );
-//
-//     if (response.statusCode == 200) {
-//       final data = json.decode(response.body);
-//       setState(() {
-//         plans = data['data']['plans'];
-//         isLoading = false;
-//       });
-//     } else if (response.statusCode == 401) {
-//       // Redirect to login on unauthorized access
-//       Navigator.of(context).pushReplacementNamed('/login');
-//     } else {
-//       setState(() {
-//         isLoading = false;
-//       });
-//       print('Error fetching plans: ${response.statusCode}');
-//     }
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(
-//         title: Text("Subscription Plans"),
-//         backgroundColor: Colors.deepPurple,
-//       ),
-//       body: isLoading
-//           ? Center(child: CircularProgressIndicator())
-//           : SingleChildScrollView(
-//         padding: EdgeInsets.all(16),
-//         child: Column(
-//           children: plans.map((plan) => _buildPlanCard(plan)).toList(),
-//         ),
-//       ),
-//     );
-//   }
-//
-//   Widget _buildPlanCard(dynamic plan) {
-//     Color cardColor = plan['planType'] == 'free'
-//         ? Colors.greenAccent
-//         : Colors.orangeAccent;
-//
-//     // Label for free plans
-//     String priceLabel = plan['price'] == 0 ? "Free" : "\$${plan['price']}";
-//
-//     return Card(
-//       elevation: 4,
-//       margin: EdgeInsets.only(bottom: 16),
-//       shape: RoundedRectangleBorder(
-//         borderRadius: BorderRadius.circular(12),
-//       ),
-//       child: Padding(
-//         padding: const EdgeInsets.all(16.0),
-//         child: Column(
-//           crossAxisAlignment: CrossAxisAlignment.start,
-//           children: [
-//             Text(
-//               plan['name'],
-//               style: TextStyle(
-//                 fontSize: 20,
-//                 fontWeight: FontWeight.bold,
-//                 color: Colors.black,
-//               ),
-//             ),
-//             SizedBox(height: 8),
-//             Text(
-//               "Max Devices: ${plan['maxDevices']}",
-//               style: TextStyle(fontSize: 16),
-//             ),
-//             SizedBox(height: 16),
-//             Align(
-//               alignment: Alignment.center,
-//               child: Container(
-//                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-//                 decoration: BoxDecoration(
-//                   color: cardColor,
-//                   borderRadius: BorderRadius.circular(12),
-//                 ),
-//                 child: Text(
-//                   priceLabel,
-//                   style: TextStyle(
-//                     fontSize: 20,
-//                     fontWeight: FontWeight.bold,
-//                     color: Colors.white,
-//                   ),
-//                 ),
-//               ),
-//             ),
-//             SizedBox(height: 16),
-//             Center(
-//               child: ElevatedButton(
-//                 onPressed: () {
-//                   // Implement purchase logic here
-//                 },
-//                 child: Text("Choose Plan" , style: TextStyle(color: Colors.white),),
-//                 style: ElevatedButton.styleFrom(
-//                   backgroundColor: Colors.blueAccent,
-//                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-//                   shape: RoundedRectangleBorder(
-//                     borderRadius: BorderRadius.circular(12),
-//                   ),
-//                 ),
-//               ),
-//             ),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -150,41 +11,83 @@ class PlansScreen extends StatefulWidget {
 class _PlansScreenState extends State<PlansScreen> {
   List<dynamic> plans = [];
   bool isLoading = true;
+  List<dynamic> subscriptions = [];
 
   @override
   void initState() {
     super.initState();
     fetchPlans();
+    _loadUserSubscriptions();
   }
 
   Future<void> fetchPlans() async {
     final box = GetStorage();
     final String? token = box.read('token');
 
-    final response = await http.get(
-      Uri.parse('https://iscandata.com/api/v1/plans'),
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
-    );
+    try {
+      final response = await http
+          .get(
+        Uri.parse('https://iscandata.com/api/v1/plans'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      )
+          .timeout(Duration(seconds: 15));
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
+      print('API Response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          plans = data['data']['plans']
+              .where((plan) => plan['price'] != null && plan['price'] > 0)
+              .toList();
+          isLoading = false;
+        });
+      } else if (response.statusCode == 401) {
+        Navigator.of(context).pushReplacementNamed('/login');
+      } else {
+        setState(() {
+          isLoading = false;
+        });
+        _showAlert('Error: ${response.statusCode}, ${response.body}');
+        print('Error fetching plans: ${response.statusCode}, ${response.body}');
+      }
+    } catch (error) {
       setState(() {
-        plans = data['data']['plans'];
         isLoading = false;
       });
-    } else if (response.statusCode == 401) {
-      // Redirect to login on unauthorized access
-      Navigator.of(context).pushReplacementNamed('/login');
-    } else {
-      setState(() {
-        isLoading = false;
-      });
-      print('Error fetching plans: ${response.statusCode}');
+      _showAlert('Failed to load data. Please try again later.');
+      print('Error: $error');
     }
   }
 
+  Future<void> _loadUserSubscriptions() async {
+    final box = GetStorage();
+    final String? token = box.read('token');
+
+    try {
+      final response = await http
+          .get(
+        Uri.parse('https://iscandata.com/api/v1/users/me'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      )
+          .timeout(Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final userData = json.decode(response.body);
+        setState(() {
+          subscriptions = userData['data']['user']['subscriptions'];
+        });
+      } else {
+        print('Error fetching user data: ${response.statusCode}');
+      }
+    } catch (error) {
+      print('Error loading subscriptions: $error');
+    }
+  }
 
   void _showAlert(String message) {
     showDialog(
@@ -206,7 +109,7 @@ class _PlansScreenState extends State<PlansScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Subscription Plans",style:TextStyle(color: Colors.white)),
+        title: Text("Plans", style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.blueAccent,
       ),
       body: isLoading
@@ -219,15 +122,13 @@ class _PlansScreenState extends State<PlansScreen> {
       ),
     );
   }
+
   Widget _buildPlanCard(dynamic plan) {
-    final box = GetStorage(); // Initialize GetStorage here
+    bool isActive = subscriptions.contains(plan['_id']); // Check if the plan is active
 
-    Color cardColor = plan['planType'] == 'free'
-        ? Colors.greenAccent
-        : Colors.orangeAccent;
+    Color cardColor = isActive ? Colors.green.withOpacity(0.3) : Colors.blueAccent;
 
-    // Label for free plans
-    String priceLabel = plan['price'] == 0 ? "Free" : "\$${plan['price']}";
+    String priceLabel = "\$${plan['price']}";
 
     return Card(
       elevation: 4,
@@ -275,12 +176,13 @@ class _PlansScreenState extends State<PlansScreen> {
             SizedBox(height: 16),
             Center(
               child: ElevatedButton(
-                onPressed: () {
-                  // Store plan ID in GetStorage
-                  box.write('selectedPlanId', plan['_id']); // Use '_id' instead of 'id'
-                  subscribeToPlan(plan['_id']); // Use '_id' instead of 'id'
+                onPressed: isActive ? null : () {
+                  // Only enable if not active
+                  GetStorage().write('selectedPlanId', plan['_id']);
+                  subscribeToPlan(plan['_id']);
                 },
-                child: Text("Choose Plan", style: TextStyle(color: Colors.white)),
+                child: Text(isActive ? "Activated" : "Choose Plan",
+                    style: TextStyle(color: Colors.white)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -300,21 +202,32 @@ class _PlansScreenState extends State<PlansScreen> {
     final box = GetStorage();
     final String? token = box.read('token');
 
-    final response = await http.post(
-      Uri.parse('https://iscandata.com/api/v1/subscriptionsRequest'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: json.encode({'planId': planId}), // planId should be correct now
-    );
+    try {
+      final response = await http.post(
+        Uri.parse('https://iscandata.com/api/v1/subscriptionsRequest'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({'planId': planId}),
+      ).timeout(Duration(seconds: 15));
 
-    if (response.statusCode == 201) {
-      final responseData = json.decode(response.body);
-      _showAlert(responseData['message']);
-    } else {
-      print('Error subscribing to plan: ${response.statusCode}');
-      _showAlert('Something went wrong! Please try again.');
+      print('Subscription Response: ${response.body}');
+
+      if (response.statusCode == 201) {
+        final responseData = json.decode(response.body);
+        GetStorage().write('activeSubscriptionId', planId); // Store the active subscription ID
+        _showAlert(responseData['message']);
+        setState(() {
+          subscriptions.add(planId); // Update the subscriptions list
+        });
+      } else {
+        print('Error subscribing to plan: ${response.statusCode}');
+        _showAlert('Something went wrong! Please try again.');
+      }
+    } catch (error) {
+      _showAlert('Failed to subscribe. Please try again later.');
+      print('Error during subscription: $error');
     }
   }
 }

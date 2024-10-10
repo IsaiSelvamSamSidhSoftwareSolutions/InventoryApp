@@ -20,11 +20,18 @@ class _DepartmentPageState extends State<DepartmentPage> {
   final TextEditingController idController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
   String? highlightedDepartmentId;
-
+  String? userEmail;
+  Future<void> _getUserEmail() async {
+    setState(() {
+      userEmail = storage.read('email');
+      print("UserEmail -- $userEmail");// Assuming email is stored in GetStorage
+    });
+  }
   @override
   void initState() {
     super.initState();
     _fetchDepartments();
+    _getUserEmail();
   }
 
   Future<void> _fetchDepartments() async {
@@ -226,12 +233,18 @@ class _DepartmentPageState extends State<DepartmentPage> {
       },
     );
   }
-
   @override
   Widget build(BuildContext context) {
+    // Assume that the current user's email is stored in a variable called `userEmail`.
+    // Fetch user email from storage (adjust according to your storage mechanism)
+     // Replace with actual email fetching logic
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Department Management' , style:TextStyle(color: Colors.white) ),
+        title: Text(
+          'Department Management',
+          style: TextStyle(color: Colors.white),
+        ),
         backgroundColor: Colors.blueAccent,
       ),
       body: isLoading
@@ -243,7 +256,7 @@ class _DepartmentPageState extends State<DepartmentPage> {
             TextField(
               onChanged: _filterDepartments,
               decoration: InputDecoration(
-                labelText: 'Search by Department Name',
+                labelText: 'Search by Department ID', // Update the label text
                 border: OutlineInputBorder(),
                 filled: true,
                 fillColor: Colors.grey[200],
@@ -251,14 +264,41 @@ class _DepartmentPageState extends State<DepartmentPage> {
             ),
             SizedBox(height: 10),
             Expanded(
-              child: ListView.builder(
+              child: filteredDepartments.isEmpty
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'No data uploaded for departments.',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'You can upload an XML file to get department data by clicking the blue icon button below.',
+                      style: TextStyle(fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Alternatively, you can add data manually.',
+                      style: TextStyle(fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              )
+                  : ListView.builder(
                 itemCount: filteredDepartments.length,
                 itemBuilder: (context, index) {
                   final department = filteredDepartments[index];
                   final isHighlighted = department['id'] == highlightedDepartmentId;
                   return AnimatedContainer(
                     duration: Duration(milliseconds: 300),
-                    color: isHighlighted ? Colors.greenAccent.withOpacity(0.5) : Colors.transparent,
+                    color: isHighlighted
+                        ? Colors.greenAccent.withOpacity(0.5)
+                        : Colors.transparent,
                     child: Card(
                       margin: EdgeInsets.symmetric(vertical: 5),
                       elevation: 5,
@@ -268,7 +308,12 @@ class _DepartmentPageState extends State<DepartmentPage> {
                           department['name'],
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        trailing: Row(
+                        subtitle: Text(
+                          department['id'].toString(),
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        trailing: userEmail == 'admin@gmail.com'
+                            ? Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
@@ -293,7 +338,8 @@ class _DepartmentPageState extends State<DepartmentPage> {
                               },
                             ),
                           ],
-                        ),
+                        )
+                            : null, // Hide buttons if user is not 'admin@gmail.com'
                       ),
                     ),
                   );
@@ -328,13 +374,12 @@ class _DepartmentPageState extends State<DepartmentPage> {
       ),
     );
   }
-
   void _filterDepartments(String query) {
     setState(() {
       searchQuery = query;
       filteredDepartments = departments
           .where((department) =>
-          department['name'].toLowerCase().contains(query.toLowerCase()))
+          department['id'].toString().contains(query)) // Filtering by Department ID
           .toList();
     });
   }
@@ -356,19 +401,42 @@ class _DepartmentPageState extends State<DepartmentPage> {
         },
       );
 
-      if (response.statusCode == 204) {
+      print('Delete response status code: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
         _showSuccessAlert('Department Deleted Successfully');
         _fetchDepartments();
       } else {
         print('Delete failed with status code: ${response.statusCode}');
+        _showErrorAlert('Failed to delete department. Please try again.');
       }
     } catch (e) {
       print('Error during department deletion: $e');
+      print('An error occurred during deletion. Please try again.');
     } finally {
       setState(() {
         isLoading = false;
       });
     }
+  }
+  void _showErrorAlert(String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Error'),
+          content: Text(message),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showConfirmDialog(BuildContext context, String title, String content, VoidCallback onConfirm) {
