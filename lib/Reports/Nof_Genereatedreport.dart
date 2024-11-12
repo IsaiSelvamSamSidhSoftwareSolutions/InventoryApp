@@ -1,251 +1,132 @@
-
-// import 'package:flutter/material.dart';
-// import 'package:http/http.dart' as http;
-// import 'dart:convert';
-// import 'package:get_storage/get_storage.dart';
-//
-// Future<Map<String, dynamic>?> fetchReportData(String reportType, String token, {String? userId}) async {
-//   final url = 'https://iscandata.com/api/v1/reports/generate-report?reportType=$reportType${userId != null ? '&userId=$userId' : ''}';
-//   final response = await http.get(
-//     Uri.parse(url),
-//     headers: {
-//       'Content-Type': 'application/json',
-//       'Authorization': 'Bearer $token',
-//     },
-//   );
-//
-//   print('Response Status: ${response.statusCode}');
-//   print('Response Body: ${response.body}');
-//
-//   if (response.statusCode == 200) {
-//     return json.decode(response.body);
-//   } else {
-//     print('Failed to load report data');
-//     return null;
-//   }
-// }
-//
-// class Nof_ReportPage extends StatefulWidget {
-//   @override
-//   _NoReportPageState createState() => _NoReportPageState();
-// }
-//
-// class _NoReportPageState extends State<Nof_ReportPage> {
-//   late Future<Map<String, dynamic>?> _reportData;
-//   final storage = GetStorage();
-//   String? _selectedReportType = 'daily'; // Default to 'daily'
-//   String? _userId; // User ID for admin role
-//   String? _userRole; // User role
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     _userRole = storage.read('UserRole'); // Get user role from GetStorage
-//     String token = storage.read('token') ?? '';
-//     _reportData = fetchReportData(_selectedReportType!, token); // Use default report type
-//   }
-//
-//   void _updateReportData() {
-//     String token = storage.read('token') ?? '';
-//     if (_selectedReportType != null) {
-//       if (_userRole == 'admin' && _userId != null) {
-//         setState(() {
-//           _reportData = fetchReportData(_selectedReportType!, token, userId: _userId);
-//         });
-//       } else {
-//         setState(() {
-//           _reportData = fetchReportData(_selectedReportType!, token);
-//         });
-//       }
-//     }
-//   }
-//
-//   void _showUserIdDialog(String reportType) {
-//     final userIdController = TextEditingController();
-//     showDialog(
-//       context: context,
-//       builder: (context) {
-//         return AlertDialog(
-//           title: Text('Enter User ID'),
-//           content: TextField(
-//             controller: userIdController,
-//             decoration: InputDecoration(
-//               labelText: 'User ID',
-//               border: OutlineInputBorder(),
-//             ),
-//           ),
-//           actions: [
-//             TextButton(
-//               onPressed: () {
-//                 Navigator.of(context).pop();
-//                 setState(() {
-//                   _userId = userIdController.text;
-//                   _updateReportData();
-//                 });
-//               },
-//               child: Text('Submit'),
-//             ),
-//             TextButton(
-//               onPressed: () {
-//                 Navigator.of(context).pop();
-//               },
-//               child: Text('Cancel'),
-//             ),
-//           ],
-//         );
-//       },
-//     );
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(
-//         title: Text('No Reports', style: TextStyle(color: Colors.white)),
-//         backgroundColor: Colors.blueAccent,
-//       ),
-//       body: Padding(
-//         padding: const EdgeInsets.all(16.0),
-//         child: Column(
-//           crossAxisAlignment: CrossAxisAlignment.start,
-//           children: [
-//             // DropdownButton for report types
-//             InputDecorator(
-//               decoration: InputDecoration(
-//                 labelText: 'Select Report',
-//                 border: OutlineInputBorder(),
-//               ),
-//               child: DropdownButton<String>(
-//                 value: _selectedReportType,
-//                 isExpanded: true,
-//                 hint: Text('Select Report'), // Display hint if no selection
-//                 items: <String>['daily', 'weekly', 'monthly'].map((String value) {
-//                   return DropdownMenuItem<String>(
-//                     value: value,
-//                     child: Text(value.capitalizeFirstLetter()),
-//                   );
-//                 }).toList(),
-//                 onChanged: (String? newValue) {
-//                   setState(() {
-//                     _selectedReportType = newValue;
-//                     if (_userRole == 'admin') {
-//                       _showUserIdDialog(newValue!);
-//                     } else {
-//                       _updateReportData();
-//                     }
-//                   });
-//                 },
-//               ),
-//             ),
-//             SizedBox(height: 16),
-//             Expanded(
-//               child: FutureBuilder<Map<String, dynamic>?>(  // Adjust the future builder
-//                 future: _reportData,
-//                 builder: (context, snapshot) {
-//                   if (snapshot.connectionState == ConnectionState.waiting) {
-//                     return Center(child: CircularProgressIndicator());
-//                   } else if (snapshot.hasError) {
-//                     print('Error: ${snapshot.error}');
-//                     return Center(child: Text('Error: ${snapshot.error}'));
-//                   } else if (! snapshot.hasData || snapshot.data?['status'] != 'success') {
-//                     return Center(child: Text('No report data available.'));
-//                   } else {
-//                     final reportData = snapshot.data!['data'];
-//                     // Assuming reportData has a structure you can display
-//                     return Center(
-//                       child: Text('No reports available at this time.'),
-//                     );
-//                   }
-//                 },
-//               ),
-//             ),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
-//
-// extension StringCasingExtension on String {
-//   String capitalizeFirstLetter() {
-//     if (this.isEmpty) {
-//       return this;
-//     }
-//     return '${this[0].toUpperCase()}${this.substring(1)}';
-//   }
-// }
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:io';
 import 'package:get_storage/get_storage.dart';
-import 'package:xml/xml.dart' as xml;
 import 'package:file_picker/file_picker.dart';
-Future<Map<String, dynamic>?> fetchReportData(String reportType, String token) async {
-  final url = 'https://iscandata.com/api/v1/reports/generate-report?reportType=$reportType';
-  final response = await http.get(
-    Uri.parse(url),
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
-    },
-  );
+import 'package:xml/xml.dart' as xml;
 
-  print('Response Status: ${response.statusCode}');
-  print('Response Body: ${response.body}');
-
-  if (response.statusCode == 200) {
-    return json.decode(response.body);
-  } else {
-    print('Failed to load report data');
-    return null;
-  }
-}
-
-class Nof_ReportPage extends StatefulWidget {
+class  Nof_ReportPage extends StatefulWidget {
   @override
-  _NoReportPageState createState() => _NoReportPageState();
+  _ReportPageState createState() => _ReportPageState();
 }
 
-class _NoReportPageState extends State<Nof_ReportPage> {
+class _ReportPageState extends State<Nof_ReportPage> {
   late Future<Map<String, dynamic>?> _reportData;
   final storage = GetStorage();
-  String? _selectedReportType = 'daily'; // Default to 'daily'
+  String _selectedReportType = 'daily';
+  final _searchController = TextEditingController();
+  List<dynamic> _filteredReportList = [];
   String? _downloadPath;
+  String? _userId;
 
   @override
   void initState() {
     super.initState();
-    String token = storage.read('token') ?? '';
-    _reportData = fetchReportData(_selectedReportType!, token);
-    _downloadPath = storage.read('downloadPath'); // Use default report type
+    _searchController.addListener(_filterReports);
+    _downloadPath = storage.read('downloadPath'); // Read cached download path
+    _updateReportData();
   }
 
-  void _updateReportData() {
-    String token = storage.read('token') ?? '';
-    if (_selectedReportType != null) {
-      setState(() {
-        _reportData = fetchReportData(_selectedReportType!, token);
-      });
+  Future<Map<String, dynamic>?> fetchReportData(String reportType, String token, BuildContext context) async {
+    // Check if the user role is admin
+    String userRole = storage.read('userRole') ?? ''; // Assuming userRole is stored in GetStorage
+    final url = 'https://iscandata.com/api/v1/reports/generate-report?reportType=$reportType${userRole == 'admin' && _userId != null ? '&userId=$_userId' : ''}';
+
+    try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else if (response.statusCode == 401) {
+        Navigator.pushReplacementNamed(context, '/login');
+        return null; // Navigate to login if token is blacklisted
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception('Failed to load report data: ${errorData['message']}');
+      }
+    } catch (error) {
+      print('Error fetching data: $error');
+      return null;
     }
   }
+  void _showUserIdDialog(String reportType) {
+    final userIdController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Enter User ID'),
+          content: TextField(
+            controller: userIdController,
+            decoration: InputDecoration(
+              labelText: 'User  ID',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                setState(() {
+                  _userId = userIdController.text; // Set the userId
+                  _updateReportData(); // Fetch report data with new userId
+                });
+              },
+              child: Text('Submit'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+  void _updateReportData() async {
+    String token = storage.read('token') ?? '';
+    // Fetch report data
+    setState(() {
+      _reportData = fetchReportData(_selectedReportType, token, context);
+    });
+  }
+
+
+
+  void _filterReports() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredReportList = _filteredReportList.where((report) {
+        final deptName = (report['departmentName'] as String).toLowerCase();
+        return deptName.contains(query);
+      }).toList();
+    });
+  }
+
   Future<void> _generateAndSaveCSV(Map<String, dynamic> reportData) async {
-    String csvData = 'Department ID, Department Name, UPC, Description, Total Qty, Retail Price, Total Retail\n'; // CSV Header
+    String csvData = 'Department Name, Zone Name, UPC, Description, Total Qty\n'; // CSV Header
 
-    // Assuming the report data has a 'formattedReport' key as per previous structure
-    final reportList = reportData['data']['formattedReport'] as List<dynamic>;
+    final reportList = reportData['data']['reportData'] as List<dynamic>;
 
-    for (var department in reportList) {
-      for (var product in department['products']) {
-        csvData +=
-        '${department['deptId'] ?? ''}, ' // Include Department ID
-            '${department['deptName'] ?? ''}, ' // Include Department Name
-            '${product['upc'] ?? ''}, '
-            '${product['description'] ?? ''}, '
-            '${product['totalQty']?.toString() ?? '0'}, '
-            '${product['retailPrice'] ?? '0.00'}, '
-            '${product['totalRetail'] ?? '0.00'}\n'; // Include Retail Price and Total Retail
+    for (var zone in reportList) {
+      for (var device in zone['devices']) {
+        for (var product in device['products']) {
+          csvData +=
+          '${product['departmentName'] ?? ''}, '
+              '${zone['zoneName'] ?? ''}, '
+              '${product['upc'] ?? ''}, '
+              '${product['description'] ?? ''}, '
+              '${product['totalQty']?.toString() ?? ' 0'}\n';
+        }
       }
     }
 
@@ -256,21 +137,21 @@ class _NoReportPageState extends State<Nof_ReportPage> {
     final builder = xml.XmlBuilder();
     builder.processing('xml', 'version="1.0"');
     builder.element('Report', nest: () {
-      // Assuming the report data has a 'formattedReport' key
-      final reportList = reportData['data']['formattedReport'] as List<dynamic>;
+      final reportList = reportData['data']['reportData'] as List<dynamic>;
 
-      for (var department in reportList) {
-        builder.element('Department', nest: () {
-          builder.element('departmentId', nest: department['deptId'] ?? 'Unknown Department ID');
-          builder.element('departmentName', nest: department['deptName'] ?? 'Unknown Department Name');
-
-          for (var product in department['products'] ?? []) {
-            builder.element('Product', nest: () {
-              builder.element('upc', nest: product['upc'] ?? 'Unknown UPC');
-              builder.element('description', nest: product['description'] ?? 'No Description');
-              builder.element('totalQty', nest: product['totalQty']?.toString() ?? '0');
-              builder.element('retailPrice', nest: product['retailPrice'] ?? '0.00');
-              builder.element('totalRetail', nest: product['totalRetail'] ?? '0.00');
+      for (var zone in reportList) {
+        builder.element('Zone', nest: () {
+          builder.element('zoneName', nest: zone['zoneName'] ?? 'Unknown Zone');
+          for (var device in zone['devices'] ?? []) {
+            builder.element('Device', nest: () {
+              for (var product in device['products'] ?? []) {
+                builder.element('Product', nest: () {
+                  builder.element('departmentName', nest: product['departmentName'] ?? 'Unknown Department');
+                  builder.element('upc', nest: product['upc'] ?? 'Unknown UPC');
+                  builder.element('description', nest: product['description'] ?? 'No Description');
+                  builder.element('totalQty', nest: product['totalQty']?.toString() ?? '0');
+                });
+              }
             });
           }
         });
@@ -289,9 +170,7 @@ class _NoReportPageState extends State<Nof_ReportPage> {
     }
 
     try {
-      final fileName = 'report_${DateTime
-          .now()
-          .millisecondsSinceEpoch}.$extension';
+      final fileName = 'report_${DateTime.now().millisecondsSinceEpoch}.$extension';
       final filePath = '$selectedDirectory/$fileName';
       final file = File(filePath);
       await file.writeAsString(data);
@@ -306,7 +185,7 @@ class _NoReportPageState extends State<Nof_ReportPage> {
     } catch (e) {
       print('Error saving file: $e'); // Log error to console
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Cant use this folder . Instead of this ! Choose Document Folder '),
+        content: Text('Cant use this folder . Instead of this ! Choose Document Folder'),
         backgroundColor: Colors.red,
       ));
     }
@@ -343,22 +222,18 @@ class _NoReportPageState extends State<Nof_ReportPage> {
                 title: Text('Change Download Location'),
                 onTap: () async {
                   Navigator.pop(context);
-                  String? selectedDirectory = await FilePicker.platform
-                      .getDirectoryPath();
+                  String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
                   if (selectedDirectory != null) {
                     setState(() {
                       _downloadPath = selectedDirectory;
-                      storage.write('downloadPath',
-                          selectedDirectory); // Cache the new path
+                      storage.write('downloadPath', selectedDirectory); // Cache the new path
                     });
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(
-                          'Download path changed to $selectedDirectory'),
+                      content: Text('Download path changed to $selectedDirectory'),
                     ));
                   }
                 },
               ),
-
             ],
           ),
         );
@@ -370,7 +245,7 @@ class _NoReportPageState extends State<Nof_ReportPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('No Reports', style: TextStyle(color: Colors.white)),
+        title: Text('Reports', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.blueAccent,
       ),
       body: Padding(
@@ -378,30 +253,44 @@ class _NoReportPageState extends State<Nof_ReportPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // DropdownButton for report types
-            InputDecorator(
-              decoration: InputDecoration(
-                labelText: 'Select Report',
-                border: OutlineInputBorder(),
+            Text('Select Report Type', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            SizedBox(height: 8),
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.blueAccent),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: DropdownButton<String>(
-                value: _selectedReportType,
                 isExpanded: true,
-                hint: Text('Select Report'),
-                // Display hint if no selection
-                items: <String>['daily', 'weekly', 'monthly'].map((
-                    String value) {
+                value: _selectedReportType,
+                items: <String>['daily', 'weekly', 'monthly'].map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
-                    child: Text(value.capitalizeFirstLetter()),
+                    child: Text(value),
                   );
                 }).toList(),
                 onChanged: (String? newValue) {
                   setState(() {
-                    _selectedReportType = newValue;
-                    _updateReportData();
+                    _selectedReportType = newValue!;
+                    // Check user role
+                    String userRole = storage.read('userRole') ?? '';
+                    if (userRole == 'admin') {
+                      // Trigger the dialog to get userId
+                      _showUserIdDialog(_selectedReportType);
+                    } else {
+                      // Fetch report data without userId
+                      _updateReportData();
+                    }
                   });
                 },
+              ),
+            ),
+            SizedBox(height: 16),
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: 'Search Department Name',
+                prefixIcon: Icon(Icons.search),
               ),
             ),
             SizedBox(height: 16),
@@ -412,54 +301,109 @@ class _NoReportPageState extends State<Nof_ReportPage> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Center(child: CircularProgressIndicator());
                   } else if (snapshot.hasError) {
-                    print('Error: ${snapshot.error}');
                     return Center(child: Text('Error: ${snapshot.error}'));
-                  } else if (!snapshot.hasData ||
-                      snapshot.data?['status'] != 'success') {
-                    return Center(child: Text('No report data available.'));
+                  } else if (!snapshot.hasData || snapshot.data == null) {
+                    return Center(child: Text('No reports found'));
                   } else {
                     final reportData = snapshot.data!['data'];
-                    final formattedReport = reportData['formattedReport'];
+                    if (reportData == null) {
+                      return Center(child: Text('No report data available'));
+                    }
+
+                    final reportList = reportData['reportData'];
+                    if (reportList == null) {
+                      return Center(child: Text('No report data available'));
+                    }
+
+                    _filteredReportList = reportList; // Initialize the filtered list
 
                     return ListView.builder(
-                      itemCount: formattedReport.length,
+                      itemCount: _filteredReportList.length,
                       itemBuilder: (context, index) {
-                        final department = formattedReport[index];
-                        final products = department['products'];
+                        final zone = _filteredReportList[index];
+                        final devices = zone['devices'];
 
-                        return Card(
-                          elevation: 4,
-                          margin: EdgeInsets.symmetric(vertical: 8),
-                          child: Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Dept #${department['deptId']} - ${department['deptName']}',
-                                  style: TextStyle(fontSize: 18,
-                                      fontWeight: FontWeight.bold),
-                                ),
-                                SizedBox(height: 8),
-                                ...products.map<Widget>((product) {
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 4.0),
-                                    child: Text(
-                                      'UPC: ${product['upc']} - ${product['description']} - Qty: ${product['totalQty']} - Retail: \$${product['retailPrice']} - Total: \$${product['totalRetail']}',
-                                    ),
-                                  );
-                                }).toList(),
-                              ],
+                        return Column(
+                          children: [
+                            Text(
+                              'Zone Name: ${zone['zoneName']}',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             ),
-                          ),
+                            SizedBox(height: 8),
+                            ListView.builder(
+                              shrinkWrap: true,
+                              physics: NeverScrollableScrollPhysics(),
+                              itemCount: devices.length,
+                              itemBuilder: (context, deviceIndex) {
+                                final device = devices[deviceIndex];
+                                final products = device['products'];
+
+                                return Column(
+                                  children: [
+                                    Text(
+                                      'Device Products:',
+                                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                    ),
+                                    SizedBox(height: 4),
+                                    ListView.builder(
+                                      shrinkWrap: true,
+                                      physics: NeverScrollableScrollPhysics(),
+                                      itemCount: products.length,
+                                      itemBuilder: (context, productIndex) {
+                                        final product = products[productIndex];
+
+                                        return Card(
+                                          elevation: 4,
+                                          margin: EdgeInsets.symmetric(vertical: 4),
+                                          color: Colors.blue[300],
+                                          child: ListTile(
+                                            title: Container(
+                                              padding: EdgeInsets.all(8.0),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    'Department Name: ${product['departmentName']}',
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Colors.black,
+                                                    ),
+                                                  ),
+                                                  SizedBox(height: 8),
+                                                  Text(
+                                                    'UPC: ${product['upc']}',
+                                                    style: TextStyle(color: Colors.black),
+                                                  ),
+                                                  SizedBox(height: 8),
+                                                  Text(
+                                                    'Description: ${product['description']}',
+                                                    style: TextStyle(color: Colors.black),
+                                                  ),
+                                                  SizedBox(height: 8),
+                                                  Text(
+                                                    'Total Qty: ${product['totalQty']}',
+                                                    style: TextStyle(color: Colors.black),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
                         );
                       },
                     );
                   }
                 },
               ),
-            ),
+            )
           ],
         ),
       ),
@@ -468,14 +412,5 @@ class _NoReportPageState extends State<Nof_ReportPage> {
         child: Icon(Icons.download),
       ),
     );
-  }
-}
-
-extension StringCasingExtension on String {
-  String capitalizeFirstLetter() {
-    if (this.isEmpty) {
-      return this;
-    }
-    return '${this[0].toUpperCase()}${this.substring(1)}';
   }
 }

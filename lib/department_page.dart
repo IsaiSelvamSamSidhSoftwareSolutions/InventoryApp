@@ -21,9 +21,11 @@ class _DepartmentPageState extends State<DepartmentPage> {
   final TextEditingController nameController = TextEditingController();
   String? highlightedDepartmentId;
   String? userEmail;
+  String? userRole;
   Future<void> _getUserEmail() async {
     setState(() {
       userEmail = storage.read('email');
+      userRole = storage.read('UserRole');
       print("UserEmail -- $userEmail");// Assuming email is stored in GetStorage
     });
   }

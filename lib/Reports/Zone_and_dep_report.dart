@@ -120,58 +120,7 @@ class _ReportPageState extends State<DetailedZoneReportPage> {
       },
     );
   }
-  ///////////////////////////////////FILE DOWNLOAD ////////////////////////////
-  // Future<void> _generateAndSaveCSV(Map<String, dynamic> reportData) async {
-  //   String csvData = 'Department Name, Zone Name, UPC, Description, Total Qty , totalRetail\n'; // CSV Header
-  //
-  //   final reportList = reportData['data']['reportData'] as List<dynamic>;
-  //
-  //   for (var zone in reportList) {
-  //     for (var device in zone['devices']) {
-  //       for (var product in device['products']) {
-  //         csvData +=
-  //         '${product['departmentName'] ?? ''}, '
-  //             '${zone['zoneName'] ?? ''}, '
-  //             '${product['upc'] ?? ''}, '
-  //             '${product['description'] ?? ''}, '
-  //             '${product['totalQty']?.toString() ?? '0'},'
-  //             '${product['totalRetail']?.toString() ?? '0'}\n';
-  //       }
-  //     }
-  //   }
-  //
-  //   await _saveFile(csvData, 'csv');
-  // }
-  //
-  // Future<void> _generateAndSaveXML(Map<String, dynamic> reportData) async {
-  //   final builder = xml.XmlBuilder();
-  //   builder.processing('xml', 'version="1.0"');
-  //   builder.element('Report', nest: () {
-  //     final reportList = reportData['data']['reportData'] as List<dynamic>;
-  //
-  //     for (var zone in reportList) {
-  //       builder.element('Zone', nest: () {
-  //         builder.element('zoneName', nest: zone['zoneName'] ?? 'Unknown Zone');
-  //         for (var device in zone['devices'] ?? []) {
-  //           builder.element('Device', nest: () {
-  //             for (var product in device['products'] ?? []) {
-  //               builder.element('Product', nest: () {
-  //                 builder.element('departmentName', nest: product['departmentName'] ?? 'Unknown Department');
-  //                 builder.element('upc', nest: product['upc'] ?? 'Unknown UPC');
-  //                 builder.element('description', nest: product['description'] ?? 'No Description');
-  //                 builder.element('totalQty', nest: product['totalQty']?.toString() ?? '0');
-  //                 builder.element('totalRetail', nest: product['totalRetail']?.toString() ?? '0');
-  //               });
-  //             }
-  //           });
-  //         }
-  //       });
-  //     }
-  //   });
-  //
-  //   final xmlData = builder.buildDocument().toString();
-  //   await _saveFile(xmlData, 'xml');
-  // }
+
   Future<void> _generateAndSaveCSV(Map<String, dynamic> reportData) async {
     String csvData = 'Zone#,Department Name,Total Qty,Total Retail\n'; // CSV Header
 

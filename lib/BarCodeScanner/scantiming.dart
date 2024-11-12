@@ -19,7 +19,7 @@ class _SessionDataState extends State<ScanTiming> {
 
   // Default dates
   DateTime fromDate = DateTime(2024, 9, 10);
-  DateTime toDate = DateTime(2024, 9, 21);
+  DateTime toDate = DateTime.now(); // Set toDate to today’s date by default
 
   @override
   void initState() {
@@ -31,6 +31,10 @@ class _SessionDataState extends State<ScanTiming> {
   }
 
   Future<void> _fetchSessionData() async {
+    setState(() {
+      isLoading = true; // Show loader while fetching data
+    });
+
     if (token == null || token!.isEmpty) {
       // Redirect to login if token is missing
       Navigator.pushReplacementNamed(context, '/login');
@@ -62,15 +66,15 @@ class _SessionDataState extends State<ScanTiming> {
         setState(() {
           _sessions = data['sessions'];
           _sortSessions(); // Sort sessions based on selected option
-          isLoading = false;
         });
       } else {
         throw Exception('Failed to load sessions');
       }
     } catch (e) {
       print(e);
+    } finally {
       setState(() {
-        isLoading = false;
+        isLoading = false; // Hide loader after data fetching
       });
     }
   }
@@ -80,35 +84,26 @@ class _SessionDataState extends State<ScanTiming> {
     DateTime end = DateTime.parse(endTime);
     Duration difference = end.difference(start);
 
-    return '${difference.inMinutes} min, ${difference.inSeconds.remainder(
-        60)} sec';
+    return '${difference.inMinutes} min, ${difference.inSeconds.remainder(60)} sec';
   }
 
-  // Method to get total time in seconds for sorting
   int _getTotalTimeInSeconds(String startTime, String endTime) {
     DateTime start = DateTime.parse(startTime);
     DateTime end = DateTime.parse(endTime);
-    return end
-        .difference(start)
-        .inSeconds;
+    return end.difference(start).inSeconds;
   }
 
-  // Method to sort sessions
   void _sortSessions() {
     if (sortOption == 'Max Time') {
       _sessions.sort((a, b) {
-        int timeA = _getTotalTimeInSeconds(
-            a['startScanTime'], a['endScanTime']);
-        int timeB = _getTotalTimeInSeconds(
-            b['startScanTime'], b['endScanTime']);
+        int timeA = _getTotalTimeInSeconds(a['startScanTime'], a['endScanTime']);
+        int timeB = _getTotalTimeInSeconds(b['startScanTime'], b['endScanTime']);
         return timeB.compareTo(timeA); // Descending order (Max Time)
       });
     } else if (sortOption == 'Min Time') {
       _sessions.sort((a, b) {
-        int timeA = _getTotalTimeInSeconds(
-            a['startScanTime'], a['endScanTime']);
-        int timeB = _getTotalTimeInSeconds(
-            b['startScanTime'], b['endScanTime']);
+        int timeA = _getTotalTimeInSeconds(a['startScanTime'], a['endScanTime']);
+        int timeB = _getTotalTimeInSeconds(b['startScanTime'], b['endScanTime']);
         return timeA.compareTo(timeB); // Ascending order (Min Time)
       });
     }
@@ -151,7 +146,9 @@ class _SessionDataState extends State<ScanTiming> {
         title: Text('Session Data', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.blueAccent,
       ),
-      body: Column(
+      body: isLoading
+          ? Center(child: CircularProgressIndicator()) // Show loader when data is loading
+          : Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -164,8 +161,7 @@ class _SessionDataState extends State<ScanTiming> {
                     children: [
                       Icon(Icons.calendar_today),
                       SizedBox(width: 8),
-                      Text(
-                          'From: ${DateFormat('yyyy-MM-dd').format(fromDate)}'),
+                      Text('From: ${DateFormat('yyyy-MM-dd').format(fromDate)}'),
                     ],
                   ),
                 ),
@@ -182,7 +178,6 @@ class _SessionDataState extends State<ScanTiming> {
               ],
             ),
           ),
-          // Sorting Options
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
@@ -193,10 +188,8 @@ class _SessionDataState extends State<ScanTiming> {
                   value: sortOption,
                   items: [
                     DropdownMenuItem(value: 'None', child: Text('None')),
-                    DropdownMenuItem(
-                        value: 'Max Time', child: Text('Max Time')),
-                    DropdownMenuItem(
-                        value: 'Min Time', child: Text('Min Time')),
+                    DropdownMenuItem(value: 'Max Time', child: Text('Max Time')),
+                    DropdownMenuItem(value: 'Min Time', child: Text('Min Time')),
                   ],
                   onChanged: (String? newValue) {
                     setState(() {
@@ -209,9 +202,7 @@ class _SessionDataState extends State<ScanTiming> {
             ),
           ),
           Expanded(
-            child: isLoading
-                ? Center(child: CircularProgressIndicator())
-                : _sessions.isEmpty
+            child: _sessions.isEmpty
                 ? Center(child: Text('No session found for selecting dates'))
                 : ListView.builder(
               itemCount: _sessions.length,
@@ -224,10 +215,7 @@ class _SessionDataState extends State<ScanTiming> {
                 var totalTime = _calculateTotalTime(
                     session['startScanTime'], session['endScanTime']);
 
-                // Alternate background colors
-                Color rowColor = index.isEven
-                    ? Colors.blue[100]!
-                    : Colors.blue[200]!;
+                Color rowColor = index.isEven ? Colors.blue[100]! : Colors.blue[200]!;
 
                 return Card(
                   elevation: 5,
@@ -250,47 +238,39 @@ class _SessionDataState extends State<ScanTiming> {
                             2: FlexColumnWidth(),
                           },
                           children: [
-                            // Header row with blue[100] background color
                             TableRow(children: [
                               Container(
                                 color: Colors.blue[100],
-                                // Full background for header
                                 padding: const EdgeInsets.all(8.0),
                                 child: Text('Start Scan Time',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold)),
+                                    style: TextStyle(fontWeight: FontWeight.bold)),
                               ),
                               Container(
                                 color: Colors.blue[100],
-                                // Full background for header
                                 padding: const EdgeInsets.all(8.0),
                                 child: Text('End Scan Time',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold)),
+                                    style: TextStyle(fontWeight: FontWeight.bold)),
                               ),
                               Container(
                                 color: Colors.blue[100],
-                                // Full background for header
                                 padding: const EdgeInsets.all(8.0),
                                 child: Text('Total Time Taken',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold)),
+                                    style: TextStyle(fontWeight: FontWeight.bold)),
                               ),
                             ]),
-                            // Data row with alternating background colors
                             TableRow(children: [
                               Container(
-                                color: rowColor, // Full background for data row
+                                color: rowColor,
                                 padding: const EdgeInsets.all(8.0),
                                 child: Text(startScanTime),
                               ),
                               Container(
-                                color: rowColor, // Full background for data row
+                                color: rowColor,
                                 padding: const EdgeInsets.all(8.0),
                                 child: Text(endScanTime),
                               ),
                               Container(
-                                color: rowColor, // Full background for data row
+                                color: rowColor,
                                 padding: const EdgeInsets.all(8.0),
                                 child: Text(totalTime),
                               ),

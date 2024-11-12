@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 // Import your pages and other components
 import 'FreeTrail.dart';
 import 'ActiveDevice.dart';
+import 'Reports/ClientReport.dart';
 import 'Reports/Report.dart';
 import 'Reports/Nof_Genereatedreport.dart';
 import 'Reports/Department_general_report.dart';
@@ -37,9 +38,9 @@ void main() async {
   await GetStorage.init();
   Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
   Workmanager().registerPeriodicTask(
-    "1",
-    simpleTaskKey,
-    frequency: Duration(minutes: 15),
+    'sessionKeepAlive',
+    'sessionKeepAliveTask',
+    frequency: Duration(minutes: 30), // Run every 30 minutes, adjust up to 60 if needed
   );
 
   // Check subscriptions and decide initial route
@@ -96,7 +97,8 @@ class MyApp extends StatelessWidget {
         '/zonePage': (context) => ZonePage(),
         '/FreeTrial': (context) => Freetrail(),
         '/DeleteAccount': (context) => DeleteAccountPage(),
-        '/User  ListScreen' : (context) => UserListScreen(),// Add FreeTrial route
+        '/User  ListScreen' : (context) => UserListScreen(),
+        '/ReportScreen' : (context) => ReportPageClient(),// Add FreeTrial route
       },
     );
   }
@@ -482,32 +484,39 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               ListTile(
                 leading: Icon(Icons.add_chart),
-                title: Text('Full Report'),
+                title: Text('client Report'),
                 onTap: () {
-                  Navigator.pushNamed(context, '/Fullreport');
+                  Navigator.pushNamed(context, '/ReportScreen');
                 },
               ),
-              ListTile(
-                leading: Icon(Icons.file_open),
-                title: Text('Not on File'),
-                onTap: () {
-                  Navigator.pushNamed(context, '/Nof_ReportPage');
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.area_chart),
-                title: Text('Department Report'),
-                onTap: () {
-                  Navigator.pushNamed(context, '/departmentReport');
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.map),
-                title: Text('Zone and Department Report'),
-                onTap: () {
-                  Navigator.pushNamed(context, '/zoneAndDepReport');
-                },
-              ),
+              // ListTile(
+              //   leading: Icon(Icons.add_chart),
+              //   title: Text('Full Report'),
+              //   onTap: () {
+              //     Navigator.pushNamed(context, '/Fullreport');
+              //   },
+              // ),
+              // ListTile(
+              //   leading: Icon(Icons.file_open),
+              //   title: Text('Not on File'),
+              //   onTap: () {
+              //     Navigator.pushNamed(context, '/Nof_ReportPage');
+              //   },
+              // ),
+              // ListTile(
+              //   leading: Icon(Icons.area_chart),
+              //   title: Text('Department Report'),
+              //   onTap: () {
+              //     Navigator.pushNamed(context, '/departmentReport');
+              //   },
+              // ),
+              // ListTile(
+              //   leading: Icon(Icons.map),
+              //   title: Text('Zone and Department Report'),
+              //   onTap: () {
+              //     Navigator.pushNamed(context, '/zoneAndDepReport');
+              //   },
+              // ),
               ListTile(
                 leading: Icon(Icons.timer),
                 title: Text('Scanning Time Report'),

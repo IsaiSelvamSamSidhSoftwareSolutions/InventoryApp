@@ -85,6 +85,7 @@
 
 
     <application
+
         android:label="inventary_app_production"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"

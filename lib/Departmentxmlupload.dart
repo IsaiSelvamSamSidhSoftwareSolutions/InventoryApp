@@ -1,212 +1,3 @@
-//
-// import 'dart:convert';
-// import 'dart:io';
-// import 'package:flutter/material.dart';
-// import 'package:file_picker/file_picker.dart';
-// import 'package:dio/dio.dart';
-// import 'package:get_storage/get_storage.dart';
-// import 'package:http_parser/http_parser.dart';
-//
-// class Departmentxmlupload extends StatefulWidget {
-//   @override
-//   _UploadAndFetchPageState createState() => _UploadAndFetchPageState();
-// }
-//
-// class _UploadAndFetchPageState extends State<Departmentxmlupload> {
-//   bool _isUploading = false;
-//   final GetStorage _storage = GetStorage();
-//   String _uploadStatus = '';
-//   String _userId = ''; // User ID to be entered by the admin
-//
-//   Future<void> uploadXML() async {
-//     String? userRole = _storage.read('userRole'); // Get User Role from storage
-//
-//     // Check if the user is an admin
-//     if (userRole == 'admin') {
-//       await _showUserIdInputDialog(); // Show dialog for User ID input
-//
-//       // Check if userId is empty after dialog
-//       if (_userId.isEmpty) {
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           SnackBar(content: Text('User ID cannot be empty.')),
-//         );
-//         return; // Exit if User ID is empty
-//       }
-//     }
-//
-//     // Proceed to file selection
-//     FilePickerResult? result = await FilePicker.platform.pickFiles(
-//       type: FileType.custom,
-//       allowedExtensions: ['xml'],
-//     );
-//
-//     if (result == null) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text('No file selected.')),
-//       );
-//       return;
-//     }
-//
-//     if (result.files.length > 1) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text('Please select only one XML file.')),
-//       );
-//       return;
-//     }
-//
-//     File file = File(result.files.single.path!);
-//     String fileName = result.files.single.name;
-//
-//     if (!fileName.endsWith('.xml')) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text('Please select a valid XML file.')),
-//       );
-//       return;
-//     }
-//
-//     String url = 'https://iscandata.com/api/v1/departments/upload-xml';
-//     String? token = _storage.read('token');
-//
-//     if (token == null || token.isEmpty) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text('No token found. Please log in.')),
-//       );
-//       return;
-//     }
-//
-//     setState(() {
-//       _isUploading = true;
-//       _uploadStatus = 'Uploading...';
-//     });
-//
-//     try {
-//       FormData formData = FormData.fromMap({
-//         'file': await MultipartFile.fromFile(
-//           file.path,
-//           filename: fileName,
-//           contentType: MediaType('application', 'xml'),
-//         ),
-//         'userId': _userId, // Use the user ID entered by the admin
-//       });
-//
-//       var response = await Dio().post(
-//         url,
-//         data: formData,
-//         options: Options(
-//           headers: {'Authorization': 'Bearer $token'},
-//           validateStatus: (status) => status! < 500,
-//         ),
-//       );
-//
-//       if (response.statusCode == 201) {
-//         var message = response.data['message'] ?? 'Upload failed.';
-//         Navigator.of(context).pop();
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           SnackBar(content: Text(message)),
-//         );
-//       } else {
-//         var errorMessage = response.data['message'] ?? 'Upload failed.';
-//         _uploadStatus = '$errorMessage';
-//         print("Upload Succesfull $_uploadStatus");
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           SnackBar(content: Text(_uploadStatus)),
-//         );
-//       }
-//     } catch (e) {
-//       if (e is DioError) {
-//         _uploadStatus = 'Error uploading file: ${e.response?.data ?? e.message}';
-//       } else {
-//         _uploadStatus = 'Unexpected error: $e';
-//       }
-//     } finally {
-//       setState(() {
-//         _isUploading = false;
-//       });
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text(_uploadStatus)),
-//       );
-//     }
-//   }
-//
-//   Future<void> _showUserIdInputDialog() async {
-//     // Reset userId before showing dialog
-//     _userId = '';
-//     return showDialog(
-//       context: context,
-//       builder: (context) {
-//         return AlertDialog(
-//           title: Text('Enter User ID'),
-//           content: TextField(
-//             onChanged: (value) {
-//               _userId = value;
-//             },
-//             decoration: InputDecoration(hintText: "User ID"),
-//           ),
-//           actions: [
-//             TextButton(
-//               onPressed: () {
-//                 if (_userId.isNotEmpty) {
-//                   Navigator.of(context).pop();
-//                 } else {
-//                   ScaffoldMessenger.of(context).showSnackBar(
-//                     SnackBar(content: Text('Please enter a User ID')),
-//                   );
-//                 }
-//               },
-//               child: Text('Submit'),
-//             ),
-//           ],
-//         );
-//       },
-//     );
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(
-//         title: Text('Upload Department XML'),
-//         backgroundColor: Colors.blueAccent,
-//       ),
-//       body: Padding(
-//         padding: const EdgeInsets.all(16.0),
-//         child: Center(
-//           child: Column(
-//             mainAxisAlignment: MainAxisAlignment.center,
-//             children: [
-//               ElevatedButton.icon(
-//                 onPressed: _isUploading ? null : uploadXML,
-//                 icon: _isUploading
-//                     ? SizedBox(
-//                   height: 24,
-//                   width: 24,
-//                   child: CircularProgressIndicator(
-//                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-//                     strokeWidth: 2.0,
-//                   ),
-//                 )
-//                     : Icon(Icons.upload_file),
-//                 label: Text(_isUploading ? 'Uploading...' : 'Upload XML File'),
-//                 style: ElevatedButton.styleFrom(
-//                   backgroundColor: Colors.blueAccent,
-//                   padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-//                 ),
-//               ),
-//               SizedBox(height: 20),
-//               Text(
-//                 _uploadStatus,
-//                 style: TextStyle(
-//                   color: _uploadStatus.contains('successfully') ? Colors.green : Colors.red,
-//                   fontWeight: FontWeight.bold,
-//                 ),
-//               ),
-//             ],
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-// }
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -224,33 +15,53 @@ class _UploadAndFetchPageState extends State<Departmentxmlupload> {
   bool _isUploading = false;
   final GetStorage _storage = GetStorage();
   String _uploadStatus = '';
-  String _userId = ''; // User ID to be entered by the admin
-  File? _file; // Selected file
+  // String _userId = ''; // User ID to be entered by the admin
+  String? _userId;
+  bool _isAdmin = false; // Check if the user is an admin
+  bool _isUserIdProvided = false; // Check if user ID is provided for admin
 
-  Future<void> uploadXML() async {
-    // Show the User ID input bottom sheet first
-    await _showUserIdInputBottomSheet();
-
-    // Check if userId is empty after dialog
-    if (_userId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('User ID cannot be empty.')),
-      );
-      return; // Exit if User ID is empty
-    }
-
-    // Proceed to file selection
-    await _selectFile();
+  @override
+  void initState() {
+    super.initState();
+    _checkUserRole(); // Check if the user is an admin when the widget is initialized
   }
 
-  Future<void> _selectFile() async {
-    // Proceed to file selection
+  Future<void> _checkUserRole() async {
+    String? userRole = _storage.read('userRole'); // Get User Role from storage
+    if (userRole == 'admin') {
+      setState(() {
+        _isAdmin = true;
+      });
+    }
+  }
+
+  Future<void> uploadXML() async {
+    if (_isAdmin && _isUserIdProvided) {
+      print("Admin detected, asking for User ID..."); // Console log for admin
+      await _showUserIdInputDialog(); // Show dialog for User ID input
+      // After showing dialog, check if userId is provided
+      if (_userId!.isEmpty) {
+        print("UI Error: User ID cannot be empty for admin."); // Print UI error
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('User ID cannot be empty.')),
+        );
+      } else {
+        _triggerFilePicker(); // Trigger file picker after user ID is provided
+      }
+    }
+    else {
+      _triggerFilePicker(); // Trigger file picker if user is not admin or user ID is already provided
+    }
+  }
+
+  Future<void> _triggerFilePicker() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['xml'],
+      allowedExtensions: ['xml']
     );
 
     if (result == null) {
+      print("UI Error: No file selected."); // Print UI error
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No file selected.')),
       );
@@ -258,30 +69,18 @@ class _UploadAndFetchPageState extends State<Departmentxmlupload> {
     }
 
     if (result.files.length > 1) {
+      print("UI Error: More than one file selected."); // Print UI error
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please select only one XML file.')),
       );
       return;
     }
 
-    setState(() {
-      _file = File(result.files.single.path!);
-    });
+    File file = File(result.files.single.path!);
+    String fileName = result.files.single.name;
 
-    // Call the upload file method after file selection
-    await _uploadFile();
-  }
-
-  Future<void> _uploadFile() async {
-    if (_file == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No file selected.')),
-      );
-      return;
-    }
-
-    String fileName = _file!.path.split('/').last;
     if (!fileName.endsWith('.xml')) {
+      print("UI Error: Invalid file format. Please select an XML file."); // Print UI error
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please select a valid XML file.')),
       );
@@ -292,6 +91,7 @@ class _UploadAndFetchPageState extends State<Departmentxmlupload> {
     String? token = _storage.read('token');
 
     if (token == null || token.isEmpty) {
+      print("UI Error: No token found. Please log in."); // Print UI error
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No token found. Please log in.')),
       );
@@ -306,7 +106,7 @@ class _UploadAndFetchPageState extends State<Departmentxmlupload> {
     try {
       FormData formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(
-          _file!.path,
+          file.path,
           filename: fileName,
           contentType: MediaType('application', 'xml'),
         ),
@@ -324,12 +124,15 @@ class _UploadAndFetchPageState extends State<Departmentxmlupload> {
 
       if (response.statusCode == 201) {
         var message = response.data['message'] ?? 'Upload failed.';
+        print("API Success: $message"); // Print success message from API
+        Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );
       } else {
         var errorMessage = response.data['message'] ?? 'Upload failed.';
         _uploadStatus = '$errorMessage';
+        print("API Error: $errorMessage"); // Print API error in console
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_uploadStatus)),
         );
@@ -337,8 +140,10 @@ class _UploadAndFetchPageState extends State<Departmentxmlupload> {
     } catch (e) {
       if (e is DioError) {
         _uploadStatus = 'Error uploading file: ${e.response?.data ?? e.message}';
+        print("API Error: ${e.response?.data ?? e.message}"); // Print Dio error in console
       } else {
         _uploadStatus = 'Unexpected error: $e';
+        print("Unexpected Error: $e"); // Print unexpected error
       }
     } finally {
       setState(() {
@@ -350,43 +155,38 @@ class _UploadAndFetchPageState extends State<Departmentxmlupload> {
     }
   }
 
-  Future<void> _showUserIdInputBottomSheet() async {
-    // Reset userId before showing bottom sheet
+  Future<void> _showUserIdInputDialog() async {
+    // Reset userId before showing dialog
     _userId = '';
-    return showModalBottomSheet(
+    return showDialog(
       context: context,
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Enter User ID',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 10),
-              TextField(
-                onChanged: (value) {
-                  _userId = value;
-                },
-                decoration: InputDecoration(hintText: "User ID"),
-              ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () {
-                  if (_userId.isNotEmpty) {
-                    Navigator.of(context).pop(); // Close bottom sheet if user ID is valid
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('User ID cannot be empty.')),
-                    );
-                  }
-                },
-                child: Text('OK'),
-              ),
-            ],
+        return AlertDialog(
+          title: Text('Enter User ID'),
+          content: TextField(
+            onChanged: (value) {
+              _userId = value;
+            },
+            decoration: InputDecoration(hintText: "User ID"),
           ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                if (_userId!.isNotEmpty) {
+                  setState(() {
+                    _isUserIdProvided = true; // Mark user ID as provided
+                  });
+                  Navigator.of(context).pop();
+                } else {
+                  print("UI Error: User ID cannot be empty."); // Print UI error in console
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Please enter a User ID')),
+                  );
+                }
+              },
+              child: Text('Submit'),
+            ),
+          ],
         );
       },
     );
@@ -396,25 +196,49 @@ class _UploadAndFetchPageState extends State<Departmentxmlupload> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Upload XML'),
+        title: Text('Upload Department XML'),
+        backgroundColor: Colors.blueAccent,
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton(
-              onPressed: _isUploading ? null : uploadXML,
-              child: Text('Upload XML'),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: Colors.white, backgroundColor: Colors.blue,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton.icon(
+                onPressed: _isUploading || (_isAdmin && !_isUserIdProvided)
+                    ? null
+                    : uploadXML,
+                icon: _isUploading
+                    ? SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    strokeWidth: 2.0,
+                  ),
+                )
+                    : Icon(Icons.upload_file),
+                label: Text(_isUploading
+                    ? 'Uploading...'
+                    : _isAdmin && !_isUserIdProvided
+                    ? 'Enter User ID'
+                    : 'Upload XML File'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
               ),
-            ),
-            SizedBox(height: 20),
-            Text(_uploadStatus),
-          ],
+              SizedBox(height: 20),
+              Text(
+                _uploadStatus,
+                style: TextStyle(
+                  color: _uploadStatus.contains('successfully') ? Colors.green : Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

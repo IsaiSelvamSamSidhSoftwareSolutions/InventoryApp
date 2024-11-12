@@ -37,16 +37,17 @@ dependencies:
   device_info_plus: ^10.0.0
   connectivity_plus: any
   carousel_slider: any
-  in_app_purchases_paywall_ui: any
   purchases_flutter: ^8.1.2
   path_provider: ^2.0.0
   flutter_speed_dial: ^7.0.0
   permission_handler: ^8.1.4+2
   barcode_widget: ^2.0.4
   flutter_email_sender: ^6.0.3
+  dropdown_search: ^6.0.1
+  flutter_typeahead: ^4.0.0
   audioplayers: any
+  open_file: any
   url_launcher: ^6.3.1
-
 
 dev_dependencies:
   flutter_test:
@@ -57,7 +58,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/beep.mp3
-
 flutter_icons:
-  android: "assets/images/appicon (2).png"
-  ios: "assets/images/appicon (2).png"
+  android: true
+  ios: true
+  image_path: "assets/images/appicon.png"
