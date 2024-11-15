@@ -1,19 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
-import 'dart:convert';
 import 'login_page.dart';
-class DeleteAccountPage extends StatelessWidget {
+
+class DeleteAccountPage extends StatefulWidget {
+  @override
+  _DeleteAccountPageState createState() => _DeleteAccountPageState();
+}
+
+class _DeleteAccountPageState extends State<DeleteAccountPage> {
+  bool _isLoading = false;
+  final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldMessengerKey,
       appBar: AppBar(
         title: Text('Delete Account'),
       ),
       body: Center(
         child: ElevatedButton(
-          onPressed: () => _confirmDeleteAccount(context),
-          child: Text('Delete My Account'),
+          onPressed: _isLoading ? null : () => _confirmDeleteAccount(context),
+          child: _isLoading
+              ? CircularProgressIndicator()
+              : Text('Delete My Account'),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.red[100], // Set button color to indicate deletion
             padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
@@ -54,13 +65,9 @@ class DeleteAccountPage extends StatelessWidget {
               child: Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => LoginPage()), // Ensure this is your login page
-                      (route) => false, // Remove all previous routes
-                );// Proceed to delete the account
+              onPressed: () async {
+                Navigator.of(context).pop(); // Close the dialog
+                await _deleteAccount(); // Call the delete account function
               },
               child: Text('Yes, Delete'),
             ),
@@ -70,9 +77,19 @@ class DeleteAccountPage extends StatelessWidget {
     );
   }
 
-  Future<void> _deleteAccount(BuildContext context) async {
+  Future<void> _deleteAccount() async {
+    setState(() {
+      _isLoading = true; // Set loading state
+    });
+
     try {
       final token = GetStorage().read('token'); // Get the token from GetStorage
+
+      if (token == null) {
+        _showAlert('No valid token found. Please log in again.');
+        return;
+      }
+
       final response = await http.delete(
         Uri.parse('https://iscandata.com/api/v1/users/deleteAccount'),
         headers: {
@@ -81,67 +98,32 @@ class DeleteAccountPage extends StatelessWidget {
         },
       );
 
-      print('API Response: ${response.body}'); // Print API response
-
       if (response.statusCode == 200) {
-        final deletedData = json.decode(response.body)['deletedData'];
-        _showDeletedDataAlert(context, deletedData);
+        // Navigate to the login page after successful deletion and clear all back stack
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => LoginPage()),
+              (route) => false, // Remove all routes
+        );
       } else {
-        print('Error: ${response.body}'); // Print error response
-        _showAlert(context, 'Failed to delete account. Please try again.');
+        _showAlert('Failed to delete account. Please try again.');
       }
     } catch (e) {
       print('An error occurred: $e'); // Print caught error
-      _showAlert(context, 'An error occurred while deleting the account.');
+      _showAlert('An error occurred while deleting the account.');
+    } finally {
+      setState(() {
+        _isLoading = false; // Reset loading state
+      });
     }
   }
 
-  void _showDeletedDataAlert(BuildContext context, Map<String, dynamic> deletedData) {
-    String message = "The following data has been deleted:\n\n";
-
-    // Loop through deletedData to create a message string
-    deletedData.forEach((key, value) {
-      message += '$key: $value\n';
-    });
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Deletion Summary'),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Close the alert dialog
-                // Optionally, navigate back to the login screen or home page
-                // Navigator.pushReplacementNamed(context, '/login');
-              },
-              child: Text('OK'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showAlert(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Notification'),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Close the alert dialog
-              },
-              child: Text('OK'),
-            ),
-          ],
-        );
-      },
+  void _showAlert(String message) {
+    // Use the scaffold messenger key to show the alert
+    _scaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: Duration(seconds: 3),
+      ),
     );
   }
 }

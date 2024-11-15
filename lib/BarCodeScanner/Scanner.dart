@@ -183,69 +183,7 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
     // Optionally, navigate back or perform other actions
     Navigator.of(context).pop();
   }
-  //
-  // Future<void> _fetchProductDetails(String barcode) async {
-  //   final token = _storage.read('token') as String?;
-  //   if (token == null) return;
-  //
-  //   try {
-  //     final response = await http.get(
-  //       Uri.parse('https://iscandata.com/api/v1/products/$barcode'),
-  //       headers: {
-  //         'Authorization': 'Bearer $token',
-  //       },
-  //     );
-  //
-  //     final responseBody = jsonDecode(response.body);
-  //
-  //     if (response.statusCode == 200 && responseBody['status'] == 'success') {
-  //       final productData = responseBody['data']['product'];
-  //       await _playBeepSound();
-  //       if (productData != null) {
-  //         _upcController.text =
-  //             barcode; // Set the UPC text field with the scanned barcode
-  //         _upcColor = Colors.black; // Reset color to black
-  //         _departmentController.text =
-  //             productData['department']['id']?.toString() ?? '000';
-  //         _priceController.text = productData['price']?.toString() ?? '0.00';
-  //         _descriptionController.text =
-  //             productData['description'] ?? 'No description';
-  //         _productFound = true;
-  //         setState(() {
-  //           _isScanning =
-  //           true; // Set _isScanning to true after a successful scan
-  //         });
-  //         _scannerController.stop(); // Stop the scanner
-  //         Future.delayed(Duration(milliseconds: 500), () {
-  //           _scannerController.start(); // Restart the scanner after a delay
-  //         });
-  //       } else {
-  //         setState(() {
-  //           productData == null;
-  //         });
-  //
-  //         _productFound = false;
-  //         _upcController.text =
-  //             barcode; // Set the UPC text field with the scanned barcode
-  //         _upcColor = Colors.red; // Set UPC text field color to red
-  //       }
-  //     } else {
-  //
-  //       _productFound = false;
-  //       _upcController.text =
-  //           barcode; // Set the UPC text field with the scanned barcode
-  //       _upcColor = Colors.red; // Set UPC text field color to red
-  //       print('Error: ${responseBody['message']}'); // Log API error message
-  //     }
-  //   } catch (e) {
-  //     _productFound = false;
-  //     _upcController.text =
-  //         barcode; // Set the UPC text field with the scanned barcode
-  //     _upcColor = Colors.red; // Set UPC text field color to red
-  //     print('Error fetching product details: $e');
-  //   }
-  // }
-  // Show Alert if Product Not Found
+
   void _showProductNotFoundAlert(String barcode) {
     showDialog(
       context: context,
@@ -437,7 +375,7 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
           final int quantity = scan['quantity'] ?? 0;
           final double price = (scan['productPrice'] ?? 0.0).toDouble();
           final double totalPrice = (scan['totalPrice'] ?? 0.0).toDouble();
-
+          final bool notOnFile = scan['notOnFile'] ?? false;
           // Return ScannedItem with department, quantity, and pricing details
           return ScannedItem(
             upc: scan['upc'],
@@ -445,6 +383,7 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
             quantity: quantity,
             price: price,
             totalPrice: totalPrice,
+            notOnFile: notOnFile,
           );
         }).toList();
 
@@ -502,7 +441,7 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
                 Navigator.of(context).pop();
                 Navigator.of(context).pop(); // Close the dialog
                 Navigator.of(context).pop(); // Close the dialog
-                _endSession(); // End the session
+               // _endSession(); // End the session
               },
             ),
           ],
@@ -860,7 +799,10 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
             pw.SizedBox(height: 20),
             pw.Text('N.O.F. Report', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
-            ...scannedItems.map((item) {
+
+            ...scannedItems
+                .where((item) => item.notOnFile == true) // Filter items where notOnFile is true
+                .map((item) {
               return pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
@@ -1003,7 +945,8 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
                           quantity: item['quantity'] ?? 0,
                           department: item['department'] != null && item['department'] is Map ? (item['department']['name'] ?? 'Unknown Department') : 'Unknown Department',
                           price: (item['price'] ?? 0).toDouble(),
-                          totalPrice: (item['totalPrice'] ?? 0).toDouble(),
+                          totalPrice: (item['totalPrice'] ?? 0).toDouble(), notOnFile: item['notOnFile'] ?? false,
+                          
                         );
                       } else {
                         return ScannedItem(
@@ -1011,7 +954,8 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
                           quantity: 0,
                           department: 'Unknown Department',
                           price: 0,
-                          totalPrice: 0,
+                          totalPrice: 0, notOnFile: false,
+                          
                         );
                       }
                     }).toList();
@@ -1458,6 +1402,7 @@ class ScannedItem {
   final int quantity;
   final double price;
   final double totalPrice;
+  final bool notOnFile; // Add this property
 
   ScannedItem({
     required this.upc,
@@ -1465,11 +1410,12 @@ class ScannedItem {
     required this.quantity,
     required this.price,
     required this.totalPrice,
+    required this.notOnFile, // Initialize this property
   });
 
   @override
   String toString() {
-    return 'UPC: $upc, Department: $department, Quantity: $quantity, Price: $price, Total Price: $totalPrice';
+    return 'UPC: $upc, Department: $department, Quantity: $quantity, Price: $price, Total Price: $totalPrice ,Not on File: $notOnFile';
   }
 }
 class Department {

@@ -92,7 +92,7 @@ class MyApp extends StatelessWidget {
         '/ScanTiming': (context) => ScanTiming(),
         '/Plans': (context) => PlansScreen(),
         '/DeleteAccount': (context) => DeleteAccountPage(),
-        '/Zoneselection': (context) => ZoneSelectionScreen(),
+        '/Zoneselection': (context) => WelcomeScreen(),
         '/Subscriptions': (context) => SubscriptionsScreen(),
         '/zonePage': (context) => ZonePage(),
         '/FreeTrial': (context) => Freetrail(),
@@ -359,7 +359,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     // Initialize the class-level _pages list
     _pages = [
-      ZoneSelectionScreen(),
+      WelcomeScreen(),
       DepartmentPage(),
       ZonePage(),
       UploadAndFetchPage(),
@@ -605,7 +605,7 @@ void callbackDispatcher() {
               box.remove('logout_needed');  // Clear logout_needed flag
 
               // Provide feedback to the user (consider using a local notification or callback)
-              notifyUser("Session is active. Heartbeat updated successfully.");
+
             } else {
               print("Received status code: ${response.statusCode}. Checking if logout is needed.");
               handleApiError(response, box); // Handle API errors
@@ -615,12 +615,11 @@ void callbackDispatcher() {
             print("Heartbeat API failed: $e");
             box.write('logout_needed', true);  // Set logout_needed flag on exception
 
-            // Notify the user about the API failure
-            notifyUser("Failed to reach the server. Please check your network connection.");
+
           }
         } else {
           print('No network available to send the heartbeat.');  // Handle no connectivity case
-          notifyUser("No network connection. Please check your internet.");
+
         }
       } else {
         print('Token or device ID missing.');  // Handle missing token or device ID
@@ -639,7 +638,7 @@ void handleApiError(http.Response response, GetStorage box) {
     notifyUser("Session expired. Please log in again.");
   } else {
     box.write('logout_needed', true);  // Indicate that logout is needed
-    notifyUser("Received an error from the server. Logging out...");
+
   }
 }
 

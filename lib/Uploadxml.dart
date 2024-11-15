@@ -135,21 +135,21 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
       );
 
       if (response.statusCode == 200) {
-        var message = response.data['message'];
-        var uploadedCount = response.data['uploadedCount'];
-        var departmentNotFoundCount = response.data['departmentNotFoundCount'];
-        var timeTaken = response.data['timeTaken'];
-        var alreadyExistingCount = response.data['alreadyExistingCount'];
-        var departmentNotFound = response.data['departmentNotFound'];
+        var message = response.data['message']; // Success message
+        var updatedCount = response.data['updatedCount']; // Count of updated products
+        var newCount = response.data['newCount']; // Count of new products
+        var departmentNotFoundCount = response.data['departmentNotFoundCount']; // Count of departments not found
+        // Removed timeTaken and alreadyExistingCount as they do not exist in the response
+        var departmentNotFound = response.data['departmentNotFound']; // List of departments not found
+        var updatedProducts = response.data['updatedProducts']; // List of updated products
+
 
         // Constructing the result message
         String resultMessage =
             "XML uploaded successfully!\n"
-            "Time taken: $timeTaken seconds\n"
-            "Uploaded count: $uploadedCount\n"
-            "Already existing count: $alreadyExistingCount\n"
+            "Updated count: $updatedCount\n"
+            "New count: $newCount\n"
             "Department not found count: $departmentNotFoundCount\n";
-
         // Showing the alert dialog
         showDialog(
           context: context,
@@ -158,6 +158,7 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
               title: Text('Upload Status'),
               content: SingleChildScrollView(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(resultMessage),
                     SizedBox(height: 10), // Add some space
@@ -169,26 +170,40 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
                         DataColumn(label: Text('UPC')),
                         DataColumn(label: Text('DeptId')),
                       ],
-                      rows: departmentNotFound.map<DataRow>((
-                          item) { // Ensure proper mapping to DataRow
+                      rows: departmentNotFound.map<DataRow>((item) {
                         return DataRow(cells: [
-                          DataCell(Text(item['upc'].toString())),
-                          // UPC column
-                          DataCell(Text(item['departmentId'].toString())),
-                          // Department ID column
+                          DataCell(Text(item['upc'].toString())), // UPC column
+                          DataCell(Text(item['departmentId'].toString())), // DeptId column
+                        ]);
+                      }).toList(),
+                    ),
+                    SizedBox(height: 20), // Add space between sections
+                    Text('Updated Products:',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 10),
+                    DataTable(
+                      columns: [
+                        DataColumn(label: Text('UPC')),
+                        DataColumn(label: Text('New Price')),
+                        DataColumn(label: Text('Previous Price')),
+                      ],
+                      rows: updatedProducts.map<DataRow>((item) {
+                        return DataRow(cells: [
+                          DataCell(Text(item['upc'].toString())), // UPC column
+                          DataCell(Text(item['newPrice'].toString())), // New Price column
+                          DataCell(Text(item['previousPrice'].toString())), // Previous Price column
                         ]);
                       }).toList(),
                     ),
                   ],
                 ),
               ),
-              actions: <Widget>[
+              actions: [
                 TextButton(
-                  child: Text('OK'),
                   onPressed: () {
-                    Navigator.of(context).pop(); // Close the dialog
-                    fetchData(''); // Automatically fetch data after successful upload
+                    Navigator.of(context).pop();
                   },
+                  child: Text('OK'),
                 ),
               ],
             );

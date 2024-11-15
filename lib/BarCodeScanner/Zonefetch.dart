@@ -16,11 +16,108 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart'; // For temp directory access
 import 'package:flutter/services.dart';
 import 'package:get_storage/get_storage.dart';
+class WelcomeScreen extends StatefulWidget {
+  const WelcomeScreen({Key? key}) : super(key: key);
+
+  @override
+  _WelcomeScreenState createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  String? startSessionID;
+
+  Future<void> _startSession(BuildContext context) async {
+    final _storage = GetStorage();
+    final token = _storage.read('token') as String;
+
+    try {
+      final response = await http.post(
+        Uri.parse('https://iscandata.com/api/v1/sessions/scan/start'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+      final responseBody = jsonDecode(response.body);
+      print('Start Session Response: $responseBody');
+
+      if (responseBody['status'] == 'success') {
+        setState(() {
+          startSessionID = responseBody['sessionId']; // Extract the sessionId correctly
+        });
+        print('Session ID: $startSessionID');
+
+        // Navigate to ZoneSelectionScreen and pass the session ID
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ZoneSelectionScreen(sessionId: startSessionID!),
+          ),
+        );
+      } else if (response.statusCode == 401) {
+        Future.delayed(const Duration(seconds: 2), () {
+          Navigator.of(context).pushReplacementNamed('/login');
+        });
+      } else {
+        // Handle other status codes or errors
+        print('Unexpected error: ${response.body}');
+      }
+    } catch (e) {
+      print('Error occurred: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.lightBlue.shade50,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                'Welcome to Store',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 28.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueAccent,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () => _startSession(context),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                  backgroundColor: Colors.blueAccent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Text(
+                  'Start Inventory',
+                  style: TextStyle(fontSize: 18, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ZoneSelectionScreen extends StatefulWidget {
+  final String sessionId;
+
+  const ZoneSelectionScreen({Key? key, required this.sessionId}) : super(key: key);
+
   @override
   _ZoneSelectionScreenState createState() => _ZoneSelectionScreenState();
 }
-
 class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
   final _storage = GetStorage(); // Assuming GetStorage is being used
   Map<String, String> zoneIdMap = {};
@@ -33,16 +130,10 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
   void initState() {
     super.initState();
     _fetchZoneIds();
+    sessionId = widget.sessionId; //
     _downloadPath = _storage.read('downloadPath');
   }
 
-  void _handleZoneEnded(String zoneId, String sessionId) {
-    setState(() {
-      selectedZoneId = zoneId;
-      this.sessionId = sessionId;
-    });
-    _endSession(); // Now _endSession can use the updated selectedZoneId and sessionId
-  }
 
   Future<void> _fetchZoneIds() async {
     final token = _storage.read('token') as String;
@@ -179,44 +270,6 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
     );
   }
 
-  Future<void> _startSession() async {
-    if (selectedZoneId == null) {
-      _showAlert('Please select a zone before starting the session.');
-      return;
-    }
-
-    final token = _storage.read('token') as String;
-    try {
-      final response = await http.post(
-        Uri.parse('https://iscandata.com/api/v1/sessions/scan/start'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({"selectedZone": selectedZoneId}),
-      );
-      final responseBody = jsonDecode(response.body);
-      print('Start Session Response: $responseBody');
-
-      if (responseBody['status'] == 'success') {
-        setState(() {
-          sessionId = responseBody['sessionId'];
-        });
-        print('Session ID: $sessionId');
-      } else if (response.statusCode == 401) {
-        Future.delayed(Duration(seconds: 2), () {
-          Navigator.of(context).pushReplacementNamed(
-              '/login'); // Adjust route name accordingly
-        });
-        return;
-      } else {
-        _showAlert('Failed to start session');
-      }
-    } catch (e) {
-      print('Error details of: $e');
-    }
-  }
-
   Future<void> _endSession() async {
     final token = _storage.read('token') as String?;
     if (token == null || sessionId == null || sessionId!.isEmpty ||
@@ -260,7 +313,7 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
           final int quantity = scan['quantity'] ?? 0;
           final double price = (scan['productPrice'] ?? 0.0).toDouble();
           final double totalPrice = (scan['totalPrice'] ?? 0.0).toDouble();
-
+          final bool notOnFile = scan['notOnFile'] ?? false;
           // Return ScannedItem with department, quantity, and pricing details
           return ScannedItem(
             upc: scan['upc'],
@@ -268,6 +321,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
             quantity: quantity,
             price: price,
             totalPrice: totalPrice,
+            notOnFile: notOnFile, // Provide the required parameter
+
           );
         }).toList();
 
@@ -317,6 +372,9 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
               child: Text('Cancel'),
               onPressed: () {
                 Navigator.of(context).pop(); // Dismiss the dialog
+                Navigator.of(context).pop();
+                Navigator.of(context).pop();
+
               },
             ),
             TextButton(
@@ -443,14 +501,20 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       csvData += '\n'; // Add a newline for separation
 
       // Assuming N.O.F. reports are similar to scans
+      // Assuming N.O.F. reports are similar to scans
       csvData += 'N.O.F. Report\n';
       csvData += 'Department Name, UPC, Quantity, Retail Price, Total Retail\n';
 
-      for (var scan in scans) {
-        double quantity = (scan['quantity'] is int) ? (scan['quantity'] as int)
-            .toDouble() : (scan['quantity'] ?? 0.0);
-        double price = (scan['price'] is int) ? (scan['price'] as int)
-            .toDouble() : (scan['price'] ?? 0.0);
+// Filter scans based on notOnFile == true
+      final nofScans = scans.where((scan) => scan['notOnFile'] == true).toList();
+
+      for (var scan in nofScans) {
+        double quantity = (scan['quantity'] is int)
+            ? (scan['quantity'] as int).toDouble()
+            : (scan['quantity'] ?? 0.0);
+        double price = (scan['price'] is int)
+            ? (scan['price'] as int).toDouble()
+            : (scan['price'] ?? 0.0);
         double totalPrice = (scan['totalPrice'] is int)
             ? (scan['totalPrice'] as int).toDouble()
             : (scan['totalPrice'] ?? 0.0);
@@ -590,23 +654,52 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
           });
         });
 
-        // N.O.F. Report
+        // // N.O.F. Report
+        // builder.element('NofReport', nest: () {
+        //   builder.element('Header',
+        //       nest: 'Department Name, UPC, Quantity, Retail Price, Total Retail');
+        //   final List<dynamic> scans = reportData['scans'];
+        //   for (var scan in scans) {
+        //     double quantity = (scan['quantity'] is int)
+        //         ? (scan['quantity'] as int).toDouble()
+        //         : (scan['quantity'] ?? 0.0);
+        //     double price = (scan['price'] is int) ? (scan['price'] as int)
+        //         .toDouble() : (scan['price'] ?? 0.0);
+        //     double totalPrice = (scan['totalPrice'] is int)
+        //         ? (scan['totalPrice'] as int).toDouble()
+        //         : (scan['totalPrice'] ?? 0.0);
+        //     builder.element('Scan', nest: () {
+        //       builder.element(
+        //           'DepartmentName', nest: scan['department']['name']);
+        //       builder.element('UPC', nest: scan['upc']);
+        //       builder.element('Quantity', nest: quantity.toString());
+        //       builder.element('RetailPrice', nest: price.toString());
+        //       builder.element('TotalRetail', nest: totalPrice.toString());
+        //     });
+        //   }
+        // });
         builder.element('NofReport', nest: () {
           builder.element('Header',
               nest: 'Department Name, UPC, Quantity, Retail Price, Total Retail');
+
+          // Extract and filter scans where notOnFile is true
           final List<dynamic> scans = reportData['scans'];
-          for (var scan in scans) {
+          final filteredScans = scans.where((scan) => scan['notOnFile'] == true).toList();
+
+          for (var scan in filteredScans) {
+            // Safely extract and convert values
             double quantity = (scan['quantity'] is int)
                 ? (scan['quantity'] as int).toDouble()
                 : (scan['quantity'] ?? 0.0);
-            double price = (scan['price'] is int) ? (scan['price'] as int)
-                .toDouble() : (scan['price'] ?? 0.0);
+            double price = (scan['price'] is int)
+                ? (scan['price'] as int).toDouble()
+                : (scan['price'] ?? 0.0);
             double totalPrice = (scan['totalPrice'] is int)
                 ? (scan['totalPrice'] as int).toDouble()
                 : (scan['totalPrice'] ?? 0.0);
+
             builder.element('Scan', nest: () {
-              builder.element(
-                  'DepartmentName', nest: scan['department']['name']);
+              builder.element('DepartmentName', nest: scan['department']['name']);
               builder.element('UPC', nest: scan['upc']);
               builder.element('Quantity', nest: quantity.toString());
               builder.element('RetailPrice', nest: price.toString());
@@ -630,7 +723,6 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       return false; // Indicate failure
     }
   }
-
   Future<bool> _generatePDF(List<ScannedItem> scannedItems, String startTime,
       String endTime, String timeTakenStr) async {
     try {
@@ -640,23 +732,24 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
-          build: (pw.Context context) =>
-          [
+          build: (pw.Context context) => [
             pw.Center(
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
-                  pw.Text('Scan Session Report', style: pw.TextStyle(
-                      fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Scan Session Report',
+                      style: pw.TextStyle(
+                          fontSize: 24, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 20),
-                  pw.Text('Date: ${DateTime.now().toLocal().toString().split(
-                      ' ')[0]}', style: pw.TextStyle(fontSize: 18)),
+                  pw.Text(
+                      'Date: ${DateTime.now().toLocal().toString().split(' ')[0]}',
+                      style: pw.TextStyle(fontSize: 18)),
                   pw.SizedBox(height: 10),
                   pw.Text('Start Time: $startTime',
                       style: pw.TextStyle(fontSize: 18)),
                   pw.SizedBox(height: 10),
-                  pw.Text(
-                      'End Time: $endTime', style: pw.TextStyle(fontSize: 18)),
+                  pw.Text('End Time: $endTime',
+                      style: pw.TextStyle(fontSize: 18)),
                   pw.SizedBox(height: 20),
                   pw.Text('Time Taken: $timeTakenStr seconds',
                       style: pw.TextStyle(fontSize: 18)),
@@ -666,8 +759,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
             ),
 
             // Detail Zones Report
-            pw.Text('Detail Zones Report', style: pw.TextStyle(
-                fontSize: 20, fontWeight: pw.FontWeight.bold)),
+            pw.Text('Detail Zones Report',
+                style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             ...scannedItems.map((item) {
               return pw.Column(
@@ -675,8 +768,7 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 children: [
                   pw.Text('Zone Name: ${item.department}',
                       style: pw.TextStyle(fontSize: 16)),
-                  pw.Text(
-                      'UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
+                  pw.Text('UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
                   pw.Text('Product Description: ${item.department}',
                       style: pw.TextStyle(fontSize: 16)),
                   pw.Text('Quantity: ${item.quantity}',
@@ -691,8 +783,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
 
             // Zones General Report
             pw.SizedBox(height: 20),
-            pw.Text('Zones General Report', style: pw.TextStyle(
-                fontSize: 20, fontWeight: pw.FontWeight.bold)),
+            pw.Text('Zones General Report',
+                style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             ...scannedItems.map((item) {
               return pw.Column(
@@ -712,8 +804,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
 
             // Department General Report
             pw.SizedBox(height: 20),
-            pw.Text('Department General Report', style: pw.TextStyle(
-                fontSize: 20, fontWeight: pw.FontWeight.bold)),
+            pw.Text('Department General Report',
+                style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             ...scannedItems.map((item) {
               return pw.Column(
@@ -731,22 +823,24 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
               );
             }).toList(),
 
-            // N.O.F. Report
+            // N.O.F. Report (filtered by notOnFile == true)
             pw.SizedBox(height: 20),
-            pw.Text('N.O.F. Report', style: pw.TextStyle(
-                fontSize: 20, fontWeight: pw.FontWeight.bold)),
+            pw.Text('N.O.F. Report',
+                style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
-            ...scannedItems.map((item) {
+            ...scannedItems
+                .where((item) => item.notOnFile == true) // Filter items where notOnFile is true
+                .map((item) {
               return pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text('Department Name: ${item.department}',
                       style: pw.TextStyle(fontSize: 16)),
-                  pw.Text(
-                      'UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
+                  pw.Text('UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
                   pw.Text('Quantity: ${item.quantity}',
                       style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Retail Price: \$${item.price.toStringAsFixed(2)}',
+                  pw.Text(
+                      'Retail Price: \$${item.price.toStringAsFixed(2)}',
                       style: pw.TextStyle(fontSize: 16)),
                   pw.Text(
                       'Total Retail: \$${item.totalPrice.toStringAsFixed(2)}',
@@ -758,7 +852,6 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
           ],
         ),
       );
-
       // Prompt user to select a directory to save the PDF
       String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
       if (selectedDirectory == null) {
@@ -840,7 +933,9 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                     icon: Icon(Icons.cancel),
                     onPressed: () {
                       _showLeaveWithoutDownloadConfirmation();
-                      Navigator.of(context).pop(); // Close the bottom sheet
+                      Navigator.of(context).pop();
+                      Navigator.of(context).pop();// Close the bottom sheet
+                      Navigator.of(context).pop();
                     },
                   ),
                 ],
@@ -880,20 +975,17 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                   if (reportData['scans'] != null &&
                       reportData['scans'] is List) {
                     print(reportData['scans']);
-                    List<
-                        ScannedItem> scannedItems = (reportData['scans'] as List)
-                        .map((item) {
+                    List<ScannedItem> scannedItems = (reportData['scans'] as List).map((item) {
                       if (item is Map<String, dynamic>) {
                         return ScannedItem(
                           upc: item['upc'] ?? 'Unknown',
                           quantity: item['quantity'] ?? 0,
-                          department: item['department'] != null &&
-                              item['department'] is Map
-                              ? (item['department']['name'] ??
-                              'Unknown Department')
+                          department: item['department'] != null && item['department'] is Map
+                              ? (item['department']['name'] ?? 'Unknown Department')
                               : 'Unknown Department',
                           price: (item['price'] ?? 0).toDouble(),
                           totalPrice: (item['totalPrice'] ?? 0).toDouble(),
+                          notOnFile: item['notOnFile'] ?? false, // Provide the notOnFile parameter
                         );
                       } else {
                         return ScannedItem(
@@ -902,10 +994,10 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                           department: 'Unknown Department',
                           price: 0,
                           totalPrice: 0,
+                          notOnFile: false, // Default value for notOnFile
                         );
                       }
-                    }).toList();
-
+                    }).toList().cast<ScannedItem>(); // Cast to List<ScannedItem>
                     // Call your PDF generation function
                     String startTime = reportData['session']['startScanTime'] ??
                         'N/A';
@@ -1033,9 +1125,9 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 BarcodeScanPage(
                   zoneId: selectedZoneId!,
                   sessionId: sessionId!,
-                  onZoneEnded: (zoneId, sessionId) =>
-                      _handleZoneEnded(
-                          zoneId, sessionId), // Pass _handleZoneEnded
+                  // onZoneEnded: (zoneId, sessionId) =>
+                  //     _handleZoneEnded(
+                  //         zoneId, sessionId), // Pass _handleZoneEnded
                 ),
           ),
         ).then((_) {
@@ -1056,11 +1148,38 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
     }
   }
 
-  void _onZoneEnd(String zoneId, String sessionId) {
-    _removeZone(zoneId);
-    _handleZoneEnded(zoneId, sessionId);
-  }
+  // void _onZoneEnd(String zoneId, String sessionId) {
+  //   _removeZone(zoneId);
+  //   _handleZoneEnded(zoneId, sessionId);
+  // }
+  Future<void> _startZone() async {
 
+    final _storage = GetStorage();
+    final token = _storage.read('token') as String;
+    try {
+      final response = await http.post(
+        Uri.parse('https://iscandata.com/api/v1/sessions/scan/addZone'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+         body: jsonEncode({"selectedZone": selectedZoneId} , ),
+      );
+      final responseBody = jsonDecode(response.body);
+      print('Start Session Response: $responseBody');
+
+      if (responseBody['status'] == 'success') {
+      } else if (response.statusCode == 401) {
+        Future.delayed(Duration(seconds: 2), () {
+          Navigator.of(context).pushReplacementNamed(
+              '/login'); // Adjust route name accordingly
+        });
+        return;
+      }
+    } catch (e) {
+      print('Error details of: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1115,7 +1234,7 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                     child: GestureDetector(
                       onTap: isNavigating ? null : () async {
                         // Start the session
-                        await _startSession();
+                        await _startZone();
                         // Check if the session ID was successfully set
                         if (sessionId != null) {
                           _navigateToScan(); // Only navigate if session ID is not null
@@ -1158,7 +1277,7 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                         padding: EdgeInsets.symmetric(vertical: 15),
                       ),
                       child: Text(
-                        'End Session',
+                        'End Inventory',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -1183,4 +1302,5 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       ),
     );
   }
+
 }
