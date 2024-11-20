@@ -435,6 +435,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
+
       onWillPop: () async {
         // Show a confirmation dialog before allowing the pop
         final shouldPop = await showDialog(
@@ -448,7 +449,12 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Text('No'),
               ),
               TextButton(
-                onPressed: () => Navigator.of(context).pop(true), // Allow pop
+                onPressed: () {
+                  final box = GetStorage();
+                  box.write('logout_needed', true); // Save the logout_needed flag
+                  Navigator.of(context).pop(true); // Close the dialog
+                  Navigator.pushReplacementNamed(context, '/login'); // Navigate to LoginPage
+                },
                 child: Text('Yes'),
               ),
             ],
