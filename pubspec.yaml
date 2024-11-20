@@ -48,6 +48,7 @@ dependencies:
   audioplayers: any
   open_file: any
   url_launcher: ^6.3.1
+  mailer: ^6.2.0
 
 dev_dependencies:
   flutter_test:

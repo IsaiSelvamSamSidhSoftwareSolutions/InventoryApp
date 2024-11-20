@@ -4,15 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:pdf/pdf.dart';
+
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_sound/flutter_sound.dart'; // Importing Flutter Sound
 import 'package:path_provider/path_provider.dart'; // For temp directory access
 import 'package:flutter/services.dart'; // For rootBundle access
-import 'package:xml/xml.dart' as xml;
-import 'package:file_picker/file_picker.dart';
-import 'package:pdf/widgets.dart' as pw;
-
+import 'Bluetoothscanner.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 class BarcodeScanPage extends StatefulWidget {
   final String zoneId;
@@ -69,6 +66,7 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
     _soundPlayer.closePlayer(); // Close the audio session
     super.dispose();
   }
+
   // void _endZone() {
   //   // Notify the parent widget that the zone has been ended
   //   if (widget.onZoneEnded != null) {
@@ -81,7 +79,30 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
   //   // Optionally, navigate back or perform other actions
   //   Navigator.of(context).pop();
   // }
-
+  Future<bool> _showEndZoneConfirmation() async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('End Zone'),
+          content: Text(
+            'Do you want to end this zone? If you end the zone, you can either end the inventory or select another zone from the dropdown menu.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text('End Zone'),
+            ),
+          ],
+        );
+      },
+    ) ??
+        false; // Default to false if the dialog is dismissed
+  }
   Future<void> _requestCameraPermission() async {
     // Check current permission status
     final status = await Permission.camera.status;
@@ -333,92 +354,6 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
     );
   }
 
-  Future<void> _endSession() async {
-    final token = _storage.read('token') as String?;
-    if (token == null || widget.sessionId.isEmpty || widget.zoneId.isEmpty) {
-      _showAlert('Session ID or selected zone is missing.');
-      return;
-    }
-
-    try {
-      final response = await http.post(
-        Uri.parse('https://iscandata.com/api/v1/sessions/scan/end'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          "sessionId": widget.sessionId,
-          "selectedZone": widget.zoneId,
-        }),
-      );
-
-      final responseBody = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && responseBody['status'] == 'success') {
-        // Extract the session details from the response
-        final session = responseBody['session'];
-        final String startScanTime = session['startScanTime'];
-        final String endScanTime = session['endScanTime'];
-
-        // Calculate the time taken for the scan session
-        final String timeTakenStr = _calculateTimeDifference(
-            startScanTime, endScanTime);
-
-        // Extract the scans from the response
-        final List<dynamic> scans = responseBody['scans'];
-        final List<ScannedItem> scannedItems = scans.map((scan) {
-          // Map department details, UPC, quantity, and price
-          final department = scan['department'] ?? {};
-          final String departmentName = department['name'] ??
-              'Unknown Department';
-          final int quantity = scan['quantity'] ?? 0;
-          final double price = (scan['productPrice'] ?? 0.0).toDouble();
-          final double totalPrice = (scan['totalPrice'] ?? 0.0).toDouble();
-          final bool notOnFile = scan['notOnFile'] ?? false;
-          // Return ScannedItem with department, quantity, and pricing details
-          return ScannedItem(
-            upc: scan['upc'],
-            department: departmentName,
-            quantity: quantity,
-            price: price,
-            totalPrice: totalPrice,
-            notOnFile: notOnFile,
-          );
-        }).toList();
-
-        // Table data structure if needed
-        final List<Map<String, dynamic>> tableData = scannedItems.map((item) {
-          return {
-            'UPC': item.upc,
-            'Department': item.department,
-            'Quantity': item.quantity,
-            'Price': item.price,
-            'Total Price': item.totalPrice,
-          };
-        }).toList();
-
-        // Display information in logs (optional)
-        print('Session ended successfully.');
-        print('Time taken: $timeTakenStr');
-        print('Scanned items: $scannedItems');
-        // Show download options (e.g., save as CSV/XML)
-        _showDownloadOptions(responseBody);
-
-        // Show an alert or table display with the results
-        _showEndSessionAlert(timeTakenStr, scannedItems, tableData);
-      } else {
-        // If the session fails to end, print the failure message and show an alert
-        print('Failed to end session: ${responseBody['message']}');
-        _showAlert(
-            'Failed to end session. Scan session may have already ended. Please go back and select a zone to start a new session.');
-      }
-    } catch (e) {
-      // Catch any exceptions and show an error alert
-      print('Error ending session: $e');
-      _showAlert('An error occurred while ending the session.');
-    }
-  }
 
   void _showLeaveWithoutDownloadConfirmation() {
     showDialog(
@@ -452,591 +387,6 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
 
 
 
-
-
-  Future<bool> _generateAndSaveCSV(Map<String, dynamic> reportData) async {
-    try {
-      // Check if 'scans' exist in reportData
-      if (reportData['scans'] == null) {
-        print('Invalid report data: scans are missing');
-        return false; // Return false since data is invalid
-      }
-
-      String csvData = ''; // Initialize CSV data
-      String startTime = reportData['session']['startScanTime'] ??
-          'N/A'; // Get start time
-      String endTime = reportData['session']['endScanTime'] ??
-          'N/A'; // Get end time
-      String timeTakenStr = _calculateTimeDifference(
-          startTime, endTime); // Calculate time taken
-
-      // Add session details to CSV
-      csvData += 'Session Start Time: $startTime\n';
-      csvData += 'Session End Time: $endTime\n';
-      csvData += 'Total Time Taken: $timeTakenStr seconds\n\n';
-
-      // Add Detail Zones Report
-      csvData += 'Detail Zones Report\n';
-      csvData += 'Zone Name, UPC, Product Description, Quantity, Total Price\n';
-
-      final List<dynamic> scans = reportData['scans'];
-      for (var scan in scans) {
-        var zone = scan['zone']['name'] ?? 'Unknown Zone';
-        double quantity = (scan['quantity'] is int) ? (scan['quantity'] as int)
-            .toDouble() : (scan['quantity'] ?? 0.0);
-        double totalPrice = (scan['totalPrice'] is int)
-            ? (scan['totalPrice'] as int).toDouble()
-            : (scan['totalPrice'] ?? 0.0);
-
-        csvData += '$zone, '
-            '${scan['upc']}, '
-            '${scan['productDescription']}, '
-            '$quantity, '
-            '$totalPrice\n';
-      }
-      csvData += '\n'; // Add a newline for separation
-
-      // Add Zones General Report
-      csvData += 'Zones General Report\n';
-      csvData += 'Zone Name, Total Quantity, Total Retail\n';
-
-      // Initialize zonesSummary map
-      Map<String, Map<String, dynamic>> zonesSummary = {};
-      for (var scan in scans) {
-        String zoneName = scan['zone']['name'];
-        double quantity = (scan['quantity'] is int) ? (scan['quantity'] as int)
-            .toDouble() : (scan['quantity'] ?? 0.0);
-        double totalPrice = (scan['totalPrice'] is int)
-            ? (scan['totalPrice'] as int).toDouble()
-            : (scan['totalPrice'] ?? 0.0);
-
-        // Initialize the zone entry if it doesn't exist
-        if (!zonesSummary.containsKey(zoneName)) {
-          zonesSummary[zoneName] = {'totalQty': 0.0, 'totalRetail': 0.0};
-        }
-
-        // Safely access the values now
-        zonesSummary[zoneName]!['totalQty'] +=
-            quantity; // Use the null assertion operator
-        zonesSummary[zoneName]!['totalRetail'] +=
-            totalPrice; // Use the null assertion operator
-      }
-
-      zonesSummary.forEach((zoneName, summary) {
-        csvData += '$zoneName, '
-            '${summary['totalQty']}, '
-            '${summary['totalRetail']}\n';
-      });
-      csvData += '\n'; // Add a newline for separation
-
-      // Add Department General Report
-      csvData += 'Department General Report\n';
-      csvData += 'Department Name, Total Quantity, Total Retail\n';
-
-      // Initialize departmentSummary map
-      Map<String, Map<String, dynamic>> departmentSummary = {};
-      for (var scan in scans) {
-        String departmentName = scan['department']['name'];
-        double quantity = (scan['quantity'] is int) ? (scan['quantity'] as int)
-            .toDouble() : (scan['quantity'] ?? 0.0);
-        double totalPrice = (scan['totalPrice'] is int)
-            ? (scan['totalPrice'] as int).toDouble()
-            : (scan['totalPrice'] ?? 0.0);
-
-        // Initialize the department entry if it doesn't exist
-        if (!departmentSummary.containsKey(departmentName)) {
-          departmentSummary[departmentName] =
-          {'totalQty': 0.0, 'totalRetail': 0.0};
-        }
-
-        // Safely access the values now
-        departmentSummary[departmentName]!['totalQty'] +=
-            quantity; // Use the null assertion operator
-        departmentSummary[departmentName]!['totalRetail'] +=
-            totalPrice; // Use the null assertion operator
-      }
-
-      departmentSummary.forEach((deptName, summary) {
-        csvData += '$deptName, '
-            '${summary['totalQty']}, '
-            '${summary['totalRetail']}\n';
-      });
-      csvData += '\n'; // Add a newline for separation
-
-      // Assuming N.O.F. reports are similar to scans
-      csvData += 'N.O.F. Report\n';
-      csvData += 'Department Name, UPC, Quantity, Retail Price, Total Retail\n';
-
-      for (var scan in scans) {
-        double quantity = (scan['quantity'] is int) ? (scan['quantity'] as int)
-            .toDouble() : (scan['quantity'] ?? 0.0);
-        double price = (scan['price'] is int) ? (scan['price'] as int)
-            .toDouble() : (scan['price'] ?? 0.0);
-        double totalPrice = (scan['totalPrice'] is int)
-            ? (scan['totalPrice'] as int).toDouble()
-            : (scan['totalPrice'] ?? 0.0);
-
-        csvData += '${scan['department']['name']}, '
-            '${scan['upc']}, '
-            '$quantity, '
-            '$price, '
-            '$totalPrice\n';
-      }
-      csvData += '\n'; // Add a newline for separation
-
-      // Save the CSV file
-      await _saveFile(csvData, 'csv');
-
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('CSV file generated successfully'),
-      ));
-
-      return true; // Return true since CSV generation was successful
-    } catch (e) {
-      print('Error generating CSV: $e');
-      return false; // Return false since CSV generation failed
-    }
-  }
-  Future<bool> _generateAndSaveXML(Map<String, dynamic> reportData) async {
-    try {
-      // Check if 'scans' exist in reportData
-      if (reportData['scans'] == null) {
-        print('Invalid report data: scans are missing');
-        return false; // Return false since data is invalid
-      }
-
-      final builder = xml.XmlBuilder();
-      builder.processing('xml', 'version="1.0"');
-      builder.element('Report', nest: () {
-        String startTime = reportData['session']['startScanTime'] ?? 'N/A'; // Get start time
-        String endTime = reportData['session']['endScanTime'] ?? 'N/A'; // Get end time
-        String timeTakenStr = _calculateTimeDifference(startTime, endTime); // Calculate time taken
-
-        // Add session details to XML
-        builder.element('SessionDetails', nest: () {
-          builder.element('StartTime', nest: startTime);
-          builder.element('EndTime', nest: endTime);
-          builder.element('TimeTaken', nest: timeTakenStr);
-        });
-
-        // Detail Zones Report
-        builder.element('DetailZonesReport', nest: () {
-          builder.element('Header', nest: 'Zone Name, UPC, Product Description, Quantity, Total Price');
-          final List<dynamic> scans = reportData['scans'];
-          for (var scan in scans) {
-            var zone = scan['zone']['name'] ?? 'Unknown Zone';
-            double quantity = (scan['quantity'] is int) ? (scan['quantity'] as int).toDouble() : (scan['quantity'] ?? 0.0);
-            double totalPrice = (scan['totalPrice'] is int) ? (scan['totalPrice'] as int).toDouble() : (scan['totalPrice'] ?? 0.0);
-            builder.element('Scan', nest: () {
-              builder.element('ZoneName', nest: zone);
-              builder.element('UPC', nest: scan['upc']);
-              builder.element('ProductDescription', nest: scan['productDescription']);
-              builder.element('Quantity', nest: quantity.toString());
-              builder.element('TotalPrice', nest: totalPrice.toString());
-            });
-          }
-        });
-
-        // Zones General Report
-        builder.element('ZonesGeneralReport', nest: () {
-          builder.element('Header', nest: 'Zone Name, Total Quantity, Total Retail');
-          Map<String, Map<String, dynamic>> zonesSummary = {};
-          final List<dynamic> scans = reportData['scans'];
-          for (var scan in scans) {
-            String zoneName = scan['zone']['name'];
-            double quantity = (scan['quantity'] is int) ? (scan['quantity'] as int).toDouble() : (scan['quantity'] ?? 0.0);
-            double totalPrice = (scan['totalPrice'] is int) ? (scan['totalPrice'] as int).toDouble() : (scan['totalPrice'] ?? 0.0);
-            if (!zonesSummary.containsKey(zoneName)) {
-              zonesSummary[zoneName] = {'totalQty': 0.0, 'totalRetail': 0.0};
-            }
-            zonesSummary[zoneName]!['totalQty'] += quantity;
-            zonesSummary[zoneName]!['totalRetail'] += totalPrice;
-          }
-          zonesSummary.forEach((zoneName, summary) {
-            builder.element('Zone', nest: () {
-              builder.element('ZoneName', nest: zoneName);
-              builder.element('TotalQuantity', nest: summary['totalQty'].toString());
-              builder.element('TotalRetail', nest: summary['totalRetail'].toString());
-            });
-          });
-        });
-
-        // Department General Report
-        builder.element('DepartmentGeneralReport', nest: () {
-          builder.element('Header', nest: 'Department Name, Total Quantity, Total Retail');
-          Map<String, Map<String, dynamic>> departmentSummary = {};
-          final List<dynamic> scans = reportData['scans'];
-          for (var scan in scans) {
-            String departmentName = scan['department']['name'];
-            double quantity = (scan['quantity'] is int) ? (scan['quantity'] as int).toDouble() : (scan['quantity'] ?? 0.0);
-            double totalPrice = (scan['totalPrice'] is int) ? (scan['totalPrice'] as int).toDouble() : (scan['totalPrice'] ?? 0.0);
-            if (!departmentSummary.containsKey(departmentName)) {
-              departmentSummary[departmentName] = {'totalQty': 0.0, 'totalRetail': 0.0};
-          }
-          departmentSummary[departmentName]!['totalQty'] += quantity;
-          departmentSummary[departmentName]!['totalRetail'] += totalPrice;
-          }
-          departmentSummary.forEach((deptName, summary) {
-          builder.element('Department', nest: () {
-          builder.element('DepartmentName', nest: deptName);
-          builder.element('TotalQuantity', nest: summary['totalQty'].toString());
-          builder.element('TotalRetail', nest: summary['totalRetail'].toString());
-          });
-          });
-        });
-
-        // N.O.F. Report
-        builder.element('NofReport', nest: () {
-          builder.element('Header', nest: 'Department Name, UPC, Quantity, Retail Price, Total Retail');
-          final List<dynamic> scans = reportData['scans'];
-          for (var scan in scans) {
-            double quantity = (scan['quantity'] is int) ? (scan['quantity'] as int).toDouble() : (scan['quantity'] ?? 0.0);
-            double price = (scan['price'] is int) ? (scan['price'] as int).toDouble() : (scan['price'] ?? 0.0);
-            double totalPrice = (scan['totalPrice'] is int) ? (scan['totalPrice'] as int).toDouble() : (scan['totalPrice'] ?? 0.0);
-            builder.element('Scan', nest: () {
-              builder.element('DepartmentName', nest: scan['department']['name']);
-              builder.element('UPC', nest: scan['upc']);
-              builder.element('Quantity', nest: quantity.toString());
-              builder.element('RetailPrice', nest: price.toString());
-              builder.element('TotalRetail', nest: totalPrice.toString());
-            });
-          }
-        });
-      });
-
-      final xmlData = builder.buildDocument().toString();
-      await _saveFile(xmlData, 'xml');
-
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('XML file downloaded successfully!'),
-        backgroundColor: Colors.green,
-      ));
-      return true; // Indicate success
-    } catch (e) {
-      print('Error generating XML: $e'); // Log error to console
-      return false; // Indicate failure
-    }
-  }
-  Future<bool> _generatePDF(List<ScannedItem> scannedItems, String startTime, String endTime, String timeTakenStr) async {
-    try {
-      final pdf = pw.Document();
-
-      // Add session details and scanned items to the PDF using MultiPage for automatic pagination
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          build: (pw.Context context) => [
-            pw.Center(
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
-                children: [
-                  pw.Text('Scan Session Report', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-                  pw.SizedBox(height: 20),
-                  pw.Text('Date: ${DateTime.now().toLocal().toString().split(' ')[0]}', style: pw.TextStyle(fontSize: 18)),
-                  pw.SizedBox(height: 10),
-                  pw.Text('Start Time: $startTime', style: pw.TextStyle(fontSize: 18)),
-                  pw.SizedBox(height: 10),
-                  pw.Text('End Time: $endTime', style: pw.TextStyle(fontSize: 18)),
-                  pw.SizedBox(height: 20),
-                  pw.Text('Time Taken: $timeTakenStr seconds', style: pw.TextStyle(fontSize: 18)),
-                  pw.SizedBox(height: 20),
-                ],
-              ),
-            ),
-
-            // Detail Zones Report
-            pw.Text('Detail Zones Report', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 10),
-            ...scannedItems.map((item) {
-              return pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('Zone Name: ${item.department}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Product Description: ${item.department}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Quantity: ${item.quantity}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Total Price: \$${item.totalPrice.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 16)),
-                  pw.SizedBox(height: 10),
-                ],
-              );
-            }).toList(),
-
-            // Zones General Report
-            pw.SizedBox(height: 20),
-            pw.Text('Zones General Report', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 10),
-            ...scannedItems.map((item) {
-              return pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('Zone Name: ${item.department}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Total Quantity: ${item.quantity}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Total Retail: \$${item.totalPrice.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 16)),
-                  pw.SizedBox(height: 10),
-                ],
-              );
-            }).toList(),
-
-            // Department General Report
-            pw.SizedBox(height: 20),
-            pw.Text('Department General Report', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 10),
-            ...scannedItems.map((item) {
-              return pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('Department Name: ${item.department}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Total Quantity: ${item.quantity}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Total Retail: \$${item.totalPrice.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 16)),
-                  pw.SizedBox(height: 10),
-                ],
-              );
-            }).toList(),
-
-            // N.O.F. Report
-            pw.SizedBox(height: 20),
-            pw.Text('N.O.F. Report', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 10),
-
-            ...scannedItems
-                .where((item) => item.notOnFile == true) // Filter items where notOnFile is true
-                .map((item) {
-              return pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('Department Name: ${item.department}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Quantity: ${item.quantity}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Retail Price: \$${item.price.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Total Retail: \$${item.totalPrice.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 16)),
-                  pw.SizedBox(height: 10),
-                ],
-              );
-            }).toList(),
-          ],
-        ),
-      );
-
-      // Prompt user to select a directory to save the PDF
-      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-      if (selectedDirectory == null) {
-        print('No directory selected. PDF not saved.');
-        return false; // Return false since no directory was selected
-      }
-
-      // Save the PDF file to the selected directory
-      final fileName = 'scan_session_${DateTime.now().millisecondsSinceEpoch}.pdf';
-      final filePath = '$selectedDirectory/$fileName';
-      final file = File(filePath);
-      await file.writeAsBytes(await pdf.save());
-
-      // Store the selected path in GetStorage
-      storage.write('downloadPath', selectedDirectory);
-
-      // Show a success Snackbar
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('PDF saved successfully: $filePath'),
-        backgroundColor: Colors.green,
-      ));
-
-      return true; // Return true to indicate success
-    } catch (e) {
-      print('Error generating PDF: $e');
-      return false; // Return false to indicate failure
-    }
-  }
-
-  Future<void> _saveFile(String data, String extension) async {
-    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-    if (selectedDirectory == null) {
-      print('No directory selected. File not saved.');
-      return;
-    }
-
-    try {
-      final fileName = 'report_${DateTime
-          .now()
-          .millisecondsSinceEpoch}.$extension';
-      final filePath = '$selectedDirectory/$fileName';
-      final file = File(filePath);
-      await file.writeAsString(data);
-
-      // Store the selected path in GetStorage
-      storage.write('downloadPath', selectedDirectory);
-
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('$extension file saved to $filePath'),
-        backgroundColor: Colors.green,
-      ));
-    } catch (e) {
-      print('Error saving file: $e'); // Log error to console
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Cannot save the file in the selected folder. Please choose a Document folder.'),
-        backgroundColor: Colors.red,
-      ));
-    }
-  }
-  void _showDownloadOptions(Map<String, dynamic> reportData) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (BuildContext context) {
-        return Container(
-          padding: EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Custom AppBar
-              AppBar(
-                title: Text('Download Options'),
-                actions: [
-                  IconButton(
-                    icon: Icon(Icons.cancel),
-                    onPressed: () {
-                      _showLeaveWithoutDownloadConfirmation();
-                      Navigator.of(context).pop(); // Close the dialog
-                      Navigator.of(context).pop(); // Close the dialog
-                      Navigator.of(context).pop();// Close the bottom sheet
-                    },
-                  ),
-                ],
-              ),
-              ListTile(
-                leading: Icon(Icons.file_download),
-                title: Text('Download as CSV'),
-                onTap: () async {
-                  if (reportData != null) {
-                    bool success = await _generateAndSaveCSV(reportData);
-                    if (success) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text('CSV downloaded successfully'),
-                      ));
-                    }
-                  }
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.file_download),
-                title: Text('Download as XML'),
-                onTap: () async {
-                  if (reportData != null) {
-                    bool success = await _generateAndSaveXML(reportData);
-                    if (success) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text('XML downloaded successfully'),
-                      ));
-                    }
-                  }
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.file_download),
-                title: Text('Download as PDF'),
-                onTap: () async {
-                  if (reportData['scans'] != null && reportData['scans'] is List) {
-                    print(reportData['scans']);
-                    List<ScannedItem> scannedItems = (reportData['scans'] as List).map((item) {
-                      if (item is Map<String, dynamic>) {
-                        return ScannedItem(
-                          upc: item['upc'] ?? 'Unknown',
-                          quantity: item['quantity'] ?? 0,
-                          department: item['department'] != null && item['department'] is Map ? (item['department']['name'] ?? 'Unknown Department') : 'Unknown Department',
-                          price: (item['price'] ?? 0).toDouble(),
-                          totalPrice: (item['totalPrice'] ?? 0).toDouble(), notOnFile: item['notOnFile'] ?? false,
-                          
-                        );
-                      } else {
-                        return ScannedItem(
-                          upc: 'Unknown',
-                          quantity: 0,
-                          department: 'Unknown Department',
-                          price: 0,
-                          totalPrice: 0, notOnFile: false,
-                          
-                        );
-                      }
-                    }).toList();
-
-                    // Call your PDF generation function
-                    String startTime = reportData['session']['startScanTime'] ?? 'N/A';
-                    String endTime = reportData['session']['endScanTime'] ?? 'N/A';
-                    final String timeTakenStr = _calculateTimeDifference(startTime, endTime);
-
-                    bool success = await _generatePDF(scannedItems, startTime, endTime, timeTakenStr);
-                    if (success) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text('PDF saved successfully'),
-                        backgroundColor: Colors.green,
-                      ));
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(' Failed to save PDF'),
-                        backgroundColor: Colors.red,
-                      ));
-                    }
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('No scans found'),
-                      backgroundColor: Colors.red,
-                    ));
-                  }
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.folder),
-                title: Text('Change Download Location'),
-                onTap: () async {
-                  String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-                  if (selectedDirectory != null) {
-                    setState(() {
-                      _downloadPath = selectedDirectory;
-                      storage.write('downloadPath', selectedDirectory);
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('Download path changed to $selectedDirectory'),
-                    ));
-                  }
-                },
-              ),
-              SizedBox(height: 20), // Add space before the cancel button
-            ],
-          ),
-        );
-      },
-    );
-  }
-// Update the _showEndSessionAlert function to display the scanned items
-  void _showEndSessionAlert(String timeTakenStr, List<ScannedItem> scannedItems, List<Map<String, dynamic>> tableData) {
-    // Display the scanned items in a list or table
-    // For example:
-    String scannedItemsStr = '';
-    for (ScannedItem item in scannedItems) {
-      scannedItemsStr += 'UPC: ${item.upc}, De'
-          'partment: ${item.department}, Quantity: ${item.quantity}, Price: ${item.price}\n';
-    }
-    _showAlert('Session ended successfully. Time taken: $timeTakenStr\nScanned Items:\n$scannedItemsStr');
-  }
-
-  // Function to calculate the time difference between two timestamps
-  String _calculateTimeDifference(String start, String end) {
-    final DateTime startTime = DateTime.parse(start);
-    final DateTime endTime = DateTime.parse(end);
-
-    final Duration difference = endTime.difference(startTime);
-
-    // Convert the difference to minutes and seconds
-    final int minutes = difference.inMinutes;
-    final int seconds = difference.inSeconds % 60;
-
-    return '$minutes minutes, $seconds seconds';
-  }
-
-  // Alert function to show the session end message
-
-
   Color _getFieldColor(TextEditingController controller) {
     if (controller.text.isEmpty) {
       return Colors.red.shade100; // Red color for empty fields
@@ -1068,7 +418,30 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
       _descriptionController.clear();
     });
   }
-
+  Widget _buildToggleButton(BuildContext context,
+      {required String label, required bool isSelected, required VoidCallback onPressed}) {
+    return GestureDetector(
+      onTap: isSelected ? null : onPressed, // Disable tap if selected
+      child: Container(
+        margin: EdgeInsets.symmetric(horizontal: 2),
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue : Colors.transparent, // Highlight active button
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? Colors.blue : Colors.grey, // Border for inactive buttons
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black, // Text color based on state
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1096,8 +469,61 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
         return shouldPop ?? false; // Return false if dialog is dismissed
       },
       child: Scaffold(
-        appBar: AppBar(
-          title: Text('Barcode Scanner'),
+        appBar:AppBar(
+          title: Text('Scanner'),
+          centerTitle: true,
+          actions: [
+            Container(
+              margin: EdgeInsets.only(right: 16), // Add some margin for aesthetics
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(30),
+                color: Colors.grey[200], // Light background for the toggle container
+              ),
+              padding: EdgeInsets.all(4),
+              child: Row(
+                children: [
+                  _buildToggleButton(
+                    context,
+                    label: "Mobile Scanner",
+                    isSelected: widget is BarcodeScanPage,
+                    onPressed: () {
+                      if (widget is! BarcodeScanPage) {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => BarcodeScanPage(
+                              zoneId: widget.zoneId,
+                              sessionId: widget.sessionId,
+                              onZoneEnded: widget.onZoneEnded,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  _buildToggleButton(
+                    context,
+                    label: "Bluetooth Scanner",
+                    isSelected: widget is Bluetoothscanner,
+                    onPressed: () {
+                      if (widget is! Bluetoothscanner) {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => Bluetoothscanner(
+                              zoneId: widget.zoneId,
+                              sessionId: widget.sessionId,
+                              onZoneEnded: widget.onZoneEnded,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         body: Column(
           children: [
@@ -1341,7 +767,12 @@ class _BarcodeScanPageState extends State<BarcodeScanPage> {
                         children: [
                           // End Scan Button
                           ElevatedButton(
-                            onPressed: _endZone,
+                            onPressed: () async {
+                              bool confirm = await _showEndZoneConfirmation();
+                              if (confirm) {
+                                _endZone(); // Call the method to end the zone
+                              }
+                            },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.red[300],
                             ),

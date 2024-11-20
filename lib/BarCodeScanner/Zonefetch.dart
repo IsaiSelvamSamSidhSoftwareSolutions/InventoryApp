@@ -16,6 +16,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart'; // For temp directory access
 import 'package:flutter/services.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:http_parser/http_parser.dart';
+import 'Bluetoothscanner.dart';
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({Key? key}) : super(key: key);
 
@@ -27,6 +29,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   String? startSessionID;
 
   Future<void> _startSession(BuildContext context) async {
+
     final _storage = GetStorage();
     final token = _storage.read('token') as String;
 
@@ -134,6 +137,14 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
     _downloadPath = _storage.read('downloadPath');
   }
 
+  void _handleZoneEnded(String zoneId, String sessionId, {required bool isBluetooth}) {
+    setState(() {
+      selectedZoneId = zoneId;
+      this.sessionId = sessionId;
+    });
+
+   // _endSession(); // Calls the end session function with the updated values
+  }
 
   Future<void> _fetchZoneIds() async {
     final token = _storage.read('token') as String;
@@ -374,7 +385,6 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 Navigator.of(context).pop(); // Dismiss the dialog
                 Navigator.of(context).pop();
                 Navigator.of(context).pop();
-
               },
             ),
             TextButton(
@@ -396,7 +406,7 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       // Check if 'scans' exist in reportData
       if (reportData['scans'] == null) {
         print('Invalid report data: scans are missing');
-        return false; // Return false since data is invalid
+        return false; // Return false sinc data is invalid
       }
 
       String csvData = ''; // Initialize CSV data
@@ -506,7 +516,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       csvData += 'Department Name, UPC, Quantity, Retail Price, Total Retail\n';
 
 // Filter scans based on notOnFile == true
-      final nofScans = scans.where((scan) => scan['notOnFile'] == true).toList();
+      final nofScans = scans.where((scan) => scan['notOnFile'] == true)
+          .toList();
 
       for (var scan in nofScans) {
         double quantity = (scan['quantity'] is int)
@@ -684,7 +695,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
 
           // Extract and filter scans where notOnFile is true
           final List<dynamic> scans = reportData['scans'];
-          final filteredScans = scans.where((scan) => scan['notOnFile'] == true).toList();
+          final filteredScans = scans.where((scan) => scan['notOnFile'] == true)
+              .toList();
 
           for (var scan in filteredScans) {
             // Safely extract and convert values
@@ -699,7 +711,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 : (scan['totalPrice'] ?? 0.0);
 
             builder.element('Scan', nest: () {
-              builder.element('DepartmentName', nest: scan['department']['name']);
+              builder.element(
+                  'DepartmentName', nest: scan['department']['name']);
               builder.element('UPC', nest: scan['upc']);
               builder.element('Quantity', nest: quantity.toString());
               builder.element('RetailPrice', nest: price.toString());
@@ -723,6 +736,7 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       return false; // Indicate failure
     }
   }
+
   Future<bool> _generatePDF(List<ScannedItem> scannedItems, String startTime,
       String endTime, String timeTakenStr) async {
     try {
@@ -732,7 +746,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
-          build: (pw.Context context) => [
+          build: (pw.Context context) =>
+          [
             pw.Center(
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -742,7 +757,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                           fontSize: 24, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 20),
                   pw.Text(
-                      'Date: ${DateTime.now().toLocal().toString().split(' ')[0]}',
+                      'Date: ${DateTime.now().toLocal().toString().split(
+                          ' ')[0]}',
                       style: pw.TextStyle(fontSize: 18)),
                   pw.SizedBox(height: 10),
                   pw.Text('Start Time: $startTime',
@@ -760,7 +776,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
 
             // Detail Zones Report
             pw.Text('Detail Zones Report',
-                style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                style: pw.TextStyle(
+                    fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             ...scannedItems.map((item) {
               return pw.Column(
@@ -768,7 +785,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 children: [
                   pw.Text('Zone Name: ${item.department}',
                       style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
+                  pw.Text(
+                      'UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
                   pw.Text('Product Description: ${item.department}',
                       style: pw.TextStyle(fontSize: 16)),
                   pw.Text('Quantity: ${item.quantity}',
@@ -784,7 +802,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
             // Zones General Report
             pw.SizedBox(height: 20),
             pw.Text('Zones General Report',
-                style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                style: pw.TextStyle(
+                    fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             ...scannedItems.map((item) {
               return pw.Column(
@@ -805,7 +824,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
             // Department General Report
             pw.SizedBox(height: 20),
             pw.Text('Department General Report',
-                style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                style: pw.TextStyle(
+                    fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             ...scannedItems.map((item) {
               return pw.Column(
@@ -826,17 +846,20 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
             // N.O.F. Report (filtered by notOnFile == true)
             pw.SizedBox(height: 20),
             pw.Text('N.O.F. Report',
-                style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                style: pw.TextStyle(
+                    fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             ...scannedItems
-                .where((item) => item.notOnFile == true) // Filter items where notOnFile is true
+                .where((item) =>
+            item.notOnFile == true) // Filter items where notOnFile is true
                 .map((item) {
               return pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text('Department Name: ${item.department}',
                       style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
+                  pw.Text(
+                      'UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
                   pw.Text('Quantity: ${item.quantity}',
                       style: pw.TextStyle(fontSize: 16)),
                   pw.Text(
@@ -852,11 +875,12 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
           ],
         ),
       );
+
       // Prompt user to select a directory to save the PDF
       String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
       if (selectedDirectory == null) {
         print('No directory selected. PDF not saved.');
-        return false; // Return false since no directory was selected
+        return false;
       }
 
       // Save the PDF file to the selected directory
@@ -867,19 +891,161 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       final file = File(filePath);
       await file.writeAsBytes(await pdf.save());
 
-      // Store the selected path in GetStorage
-      _storage.write('downloadPath', selectedDirectory);
+      print('PDF saved at: $filePath'); // Debugging path
 
-      // Show a success Snackbar
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('PDF saved successfully: $filePath'),
-        backgroundColor: Colors.green,
-      ));
+      // Use the exact path for email
+      bool emailSuccess = await _sendEmailWithPDF(filePath);
 
-      return true; // Return true to indicate success
+      if (emailSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('PDF saved and email sent successfully: $filePath'),
+          backgroundColor: Colors.green,
+        ));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('PDF saved, but email sending failed: $filePath'),
+          backgroundColor: Colors.orange,
+        ));
+      }
+
+      return true;
     } catch (e) {
       print('Error generating PDF: $e');
-      return false; // Return false to indicate failure
+      return false;
+    }
+  }
+
+  // Future<bool> _sendEmailWithPDF() async {
+  //   try {
+  //     final token = _storage.read('token') as String?;
+  //     if (token == null) {
+  //       print('Token not available');
+  //       return false;
+  //     }
+  //
+  //     // Retrieve the exact file path from GetStorage
+  //     final filePath = _storage.read('savedFilePath') as String?;
+  //     if (filePath == null || !File(filePath).existsSync()) {
+  //       print('File path not found or file does not exist.');
+  //       return false;
+  //     }
+  //
+  //     // Prepare the request
+  //     final request = http.MultipartRequest(
+  //       'POST',
+  //       Uri.parse('https://iscandata.com/api/v1/sessions/send-report'),
+  //     );
+  //     request.headers['Authorization'] = 'Bearer $token';
+  //
+  //     // Attach the file
+  //     request.files.add(await http.MultipartFile.fromPath(
+  //       'file',
+  //       filePath,
+  //       contentType: MediaType('application', 'pdf'),
+  //     ));
+  //
+  //     // Send the request
+  //     final response = await request.send();
+  //
+  //     if (response.statusCode == 200) {
+  //       print('Email sent successfully with attachment: $filePath');
+  //       return true;
+  //     } else {
+  //       print('Failed to send email: ${response.statusCode}');
+  //       return false;
+  //     }
+  //   } catch (e) {
+  //     print('Error sending email: $e');
+  //     return false;
+  //   }
+  // }
+  Future<bool> _sendEmailWithPDF(String filepath) async {
+    try {
+      final token = _storage.read('token') as String?;
+      if (token == null) {
+        print('Token not available');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Authentication token not available')),
+          );
+        }
+        return false;
+      }
+
+      if (filepath.isEmpty) {
+        print('File path not provided.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('File path not provided.')),
+          );
+        }
+        return false;
+      }
+
+      // Check if the file exists
+      final file = File(filepath);
+      if (!file.existsSync()) {
+        print('File does not exist at path: $filepath');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(
+                'The file does not exist at the specified path.')),
+          );
+        }
+        return false;
+      }
+
+      // Prepare the HTTP request
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://iscandata.com/api/v1/sessions/send-report'),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+
+      // request.files.add(await http.MultipartFile.fromPath(
+      //   'file',
+      //   filepath,
+      //   contentType: MediaType('application', 'pdf'),
+      // ));
+      request.files.add(await http.MultipartFile.fromPath(
+        'report', // Updated to match the server's expected field name
+        filepath,
+        contentType: MediaType('application', 'pdf'),
+      ));
+
+
+      final response = await request.send();
+
+      // Read the response body for details
+      final responseBody = await response.stream.bytesToString();
+
+      if (response.statusCode == 200) {
+        print('Email sent successfully with attachment: $filepath');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Email sent successfully!')),
+          );
+        }
+        return true;
+      } else {
+        print('Failed to send email: ${response.statusCode}');
+        print('Error details: $responseBody');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(
+                'Failed to send email: ${response.reasonPhrase}')),
+          );
+        }
+        return false;
+      }
+    } catch (e) {
+      print('Error sending email: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('An error occurred while sending the email.')),
+        );
+      }
+      return false;
     }
   }
 
@@ -891,29 +1057,33 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
     }
 
     try {
-      final fileName = 'report_${DateTime
+      final fileName = 'scan_session_${DateTime
           .now()
           .millisecondsSinceEpoch}.$extension';
       final filePath = '$selectedDirectory/$fileName';
       final file = File(filePath);
       await file.writeAsString(data);
 
-      // Store the selected path in GetStorage
-      _storage.write('downloadPath', selectedDirectory);
+      print('PDF saved at: $filePath'); // Log the saved file path
 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('$extension file saved to $filePath'),
-        backgroundColor: Colors.green,
-      ));
+      // Call the function to send the email, passing the filePath
+      await _sendEmailWithPDF(filePath);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$extension file saved to $filePath')),
+        );
+      }
     } catch (e) {
-      print('Error saving file: $e'); // Log error to console
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Cannot save the file in the selected folder. Please choose a Document folder.'),
-        backgroundColor: Colors.red,
-      ));
+      print('Error saving file: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save file. Please try again.')),
+        );
+      }
     }
   }
+
 
   void _showDownloadOptions(Map<String, dynamic> reportData) {
     showModalBottomSheet(
@@ -934,14 +1104,15 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                     onPressed: () {
                       _showLeaveWithoutDownloadConfirmation();
                       Navigator.of(context).pop();
-                      Navigator.of(context).pop();// Close the bottom sheet
+                      Navigator.of(context).pop(); // Close the bottom sheet
                       Navigator.of(context).pop();
                     },
                   ),
                 ],
               ),
+
               ListTile(
-                leading: Icon(Icons.file_download),
+                leading: Icon(Icons.insert_drive_file),
                 title: Text('Download as CSV'),
                 onTap: () async {
                   if (reportData != null) {
@@ -955,7 +1126,7 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 },
               ),
               ListTile(
-                leading: Icon(Icons.file_download),
+                leading: Icon(Icons.table_chart_rounded),
                 title: Text('Download as XML'),
                 onTap: () async {
                   if (reportData != null) {
@@ -969,23 +1140,36 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 },
               ),
               ListTile(
-                leading: Icon(Icons.file_download),
+                leading: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  // Ensures the row doesn't take up unnecessary space
+                  children: [
+                    Icon(Icons.email, color: Colors.blue), // Email icon
+                    SizedBox(width: 10), // Spacing between icons
+                    Icon(Icons.download, color: Colors.green), // Download icon
+                  ],
+                ),
                 title: Text('Download as PDF'),
                 onTap: () async {
                   if (reportData['scans'] != null &&
                       reportData['scans'] is List) {
                     print(reportData['scans']);
-                    List<ScannedItem> scannedItems = (reportData['scans'] as List).map((item) {
+                    List<
+                        ScannedItem> scannedItems = (reportData['scans'] as List)
+                        .map((item) {
                       if (item is Map<String, dynamic>) {
                         return ScannedItem(
                           upc: item['upc'] ?? 'Unknown',
                           quantity: item['quantity'] ?? 0,
-                          department: item['department'] != null && item['department'] is Map
-                              ? (item['department']['name'] ?? 'Unknown Department')
+                          department: item['department'] != null &&
+                              item['department'] is Map
+                              ? (item['department']['name'] ??
+                              'Unknown Department')
                               : 'Unknown Department',
                           price: (item['price'] ?? 0).toDouble(),
                           totalPrice: (item['totalPrice'] ?? 0).toDouble(),
-                          notOnFile: item['notOnFile'] ?? false, // Provide the notOnFile parameter
+                          notOnFile: item['notOnFile'] ??
+                              false, // Provide the notOnFile parameter
                         );
                       } else {
                         return ScannedItem(
@@ -997,7 +1181,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                           notOnFile: false, // Default value for notOnFile
                         );
                       }
-                    }).toList().cast<ScannedItem>(); // Cast to List<ScannedItem>
+                    }).toList().cast<
+                        ScannedItem>(); // Cast to List<ScannedItem>
                     // Call your PDF generation function
                     String startTime = reportData['session']['startScanTime'] ??
                         'N/A';
@@ -1058,14 +1243,18 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       List<Map<String, dynamic>> tableData) {
     // Display the scanned items in a list or table
     // For example:
-    String scannedItemsStr = '';
-    for (ScannedItem item in scannedItems) {
-      scannedItemsStr += 'UPC: ${item.upc}, De'
-          'partment: ${item.department}, Quantity: ${item
-          .quantity}, Price: ${item.price}\n';
-    }
+    // String scannedItemsStr = '';
+    // for (ScannedItem item in scannedItems) {
+    //   scannedItemsStr += 'UPC: ${item.upc}, De'
+    //       'partment: ${item.department}, Quantity: ${item
+    //       .quantity}, Price: ${item.price}\n';
+    // // }
+    // _showAlert(
+    //     'Session ended successfully. Time taken: $timeTakenStr\nScanned Items:\n$scannedItemsStr');
     _showAlert(
-        'Session ended successfully. Time taken: $timeTakenStr\nScanned Items:\n$scannedItemsStr');
+        'Session ended successfully. The time taken for this session was $timeTakenStr. You will now have the option to download the session report in CSV, XML, or PDF format. Additionally, a PDF copy will be sent to your registered email address automatically.'
+    );
+
   }
 
   // Function to calculate the time difference between two timestamps
@@ -1095,11 +1284,10 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       openAppSettings();
     }
   }
-
-  void _navigateToScan() async {
+  void _navigateToScan({bool useBluetoothScanner = false}) async {
     // Check if the zone ID and session ID are selected
     if (selectedZoneId != null && sessionId != null) {
-      // Check camera permissionn
+      // Check camera permission
       final status = await Permission.camera.request();
       if (status.isGranted) {
         setState(() {
@@ -1117,18 +1305,25 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
         // Delay for a short while to show the message
         await Future.delayed(Duration(seconds: 2));
 
-        // Permission granted, navigate to BarcodeScanPage
+        // Permission granted, navigate to the appropriate page
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                BarcodeScanPage(
-                  zoneId: selectedZoneId!,
-                  sessionId: sessionId!,
-                  // onZoneEnded: (zoneId, sessionId) =>
-                  //     _handleZoneEnded(
-                  //         zoneId, sessionId), // Pass _handleZoneEnded
-                ),
+            builder: (context) => useBluetoothScanner
+                ? Bluetoothscanner(
+              zoneId: selectedZoneId!,
+              sessionId: sessionId!,
+              onZoneEnded: (zoneId, sessionId) {
+                _handleZoneEnded(zoneId, sessionId, isBluetooth: true);
+              },
+            )
+                : BarcodeScanPage(
+              zoneId: selectedZoneId!,
+              sessionId: sessionId!,
+              onZoneEnded: (zoneId, sessionId) {
+                _handleZoneEnded(zoneId, sessionId, isBluetooth: false);
+              },
+            ),
           ),
         ).then((_) {
           // Reset navigation state after coming back
@@ -1147,13 +1342,11 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       _showAlert('Please select a zone and ensure the session has started.');
     }
   }
-
-  // void _onZoneEnd(String zoneId, String sessionId) {
-  //   _removeZone(zoneId);
-  //   _handleZoneEnded(zoneId, sessionId);
-  // }
+  void _onZoneEnd(String zoneId, String sessionId, {bool isBluetooth = false}) {
+    _removeZone(zoneId);
+    _handleZoneEnded(zoneId, sessionId, isBluetooth: isBluetooth); // Pass the isBluetooth parameter
+  }
   Future<void> _startZone() async {
-
     final _storage = GetStorage();
     final token = _storage.read('token') as String;
     try {
@@ -1163,13 +1356,13 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
-         body: jsonEncode({"selectedZone": selectedZoneId} , ),
+        body: jsonEncode({"selectedZone": selectedZoneId},),
       );
       final responseBody = jsonDecode(response.body);
       print('Start Session Response: $responseBody');
 
-      if (responseBody['status'] == 'success') {
-      } else if (response.statusCode == 401) {
+      if (responseBody['status'] == 'success') {} else
+      if (response.statusCode == 401) {
         Future.delayed(Duration(seconds: 2), () {
           Navigator.of(context).pushReplacementNamed(
               '/login'); // Adjust route name accordingly
@@ -1187,6 +1380,7 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       appBar: AppBar(
         title: Text('Select Zone'),
         backgroundColor: Colors.blueAccent,
+        automaticallyImplyLeading: false, // Removes the default back button
       ),
       body: Center(
         child: Padding(
@@ -1197,6 +1391,12 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
               if (zoneIdMap.isNotEmpty)
                 Column(
                   children: [
+                    Text(
+                      'Select a Zone to Start',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 10),
                     Container(
                       padding: EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
@@ -1225,17 +1425,27 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                   ],
                 )
               else
-                CircularProgressIndicator(),
+                Column(
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 10),
+                    Text(
+                      'Loading zones, please wait...',
+                      style: TextStyle(fontSize: 14, color: Colors.black54),
+                    ),
+                  ],
+                ),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
                     child: GestureDetector(
-                      onTap: isNavigating ? null : () async {
+                      onTap: (selectedZoneId == null || isNavigating)
+                          ? null
+                          : () async {
                         // Start the session
                         await _startZone();
-                        // Check if the session ID was successfully set
                         if (sessionId != null) {
                           _navigateToScan(); // Only navigate if session ID is not null
                         }
@@ -1244,7 +1454,9 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                         padding: const EdgeInsets.all(8.0),
                         height: 50,
                         decoration: BoxDecoration(
-                          color: Colors.blue,
+                          color: (selectedZoneId == null || isNavigating)
+                              ? Colors.grey
+                              : Colors.blue,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -1271,7 +1483,12 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                   SizedBox(width: 10),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _endSession,
+                      onPressed: () async {
+                        bool confirm = await _showEndInventoryConfirmation();
+                        if (confirm) {
+                          _endSession();
+                        }
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.redAccent,
                         padding: EdgeInsets.symmetric(vertical: 15),
@@ -1292,7 +1509,7 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
 
               if (selectedZoneId == null)
                 Text(
-                  'Please select a zone to start scanning and ensure upload XML file is done before scan',
+                  'Please select a zone to start scanning and ensure XML file upload is completed before scanning.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: Colors.black54),
                 ),
@@ -1303,4 +1520,29 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
     );
   }
 
+// Confirmation dialog for ending inventory
+  Future<bool> _showEndInventoryConfirmation() async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('End Inventory Session'),
+          content: Text(
+            'Are you sure you want to end this inventory session? This will reset the session, and you will need to initiate a new one.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text('End Session'),
+            ),
+          ],
+        );
+      },
+    ) ??
+        false;
+  }
 }
