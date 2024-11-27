@@ -313,41 +313,55 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
         // Calculate the time taken for the scan session
         final String timeTakenStr = _calculateTimeDifference(
             startScanTime, endScanTime);
-
-        // Extract the scans from the response
+// Extract the scans from the response
         final List<dynamic> scans = responseBody['scans'];
         final List<ScannedItem> scannedItems = scans.map((scan) {
-          // Map department details, UPC, quantity, and price
+          // Map department and zone details
           final department = scan['department'] ?? {};
-          final String departmentName = department['name'] ??
-              'Unknown Department';
+          final zone = scan['zone'] ?? {};
+          final String departmentName = department['name'] ?? 'Unknown Department';
+          final String zoneName = zone['name'] ?? 'Unknown Zone'; // Define zoneName here
+          final zoneDescription= zone['description'] ?? 'Unknown zoneDescription';
           final int quantity = scan['quantity'] ?? 0;
           final double price = (scan['productPrice'] ?? 0.0).toDouble();
           final double totalPrice = (scan['totalPrice'] ?? 0.0).toDouble();
           final bool notOnFile = scan['notOnFile'] ?? false;
-          // Return ScannedItem with department, quantity, and pricing details
+          final String departmentId = department['id']?.toString() ?? 'Unknown Department ID';
+          final productDescription= scan['productDescription'] ?? 'Unknown Product';
+
+          final String zoneId = zone['_id']?.toString() ?? 'Unknown Zone ID';
+          // Return ScannedItem with all details
           return ScannedItem(
             upc: scan['upc'],
             department: departmentName,
             quantity: quantity,
             price: price,
             totalPrice: totalPrice,
-            notOnFile: notOnFile, // Provide the required parameter
-
+            notOnFile: notOnFile,
+            zoneName: zoneName,
+              productDescription:productDescription,
+              zoneDescription : zoneDescription,
+            departmentId: departmentId,
+            zoneId: zoneId
+            // Use zoneName consistently here
           );
         }).toList();
 
-        // Table data structure if needed
+// Table data structure if needed
         final List<Map<String, dynamic>> tableData = scannedItems.map((item) {
           return {
             'UPC': item.upc,
             'Department': item.department,
+            'Zone': item.zoneName, // Use zoneName consistently
             'Quantity': item.quantity,
+            'Department ID': item.departmentId, // New field
+            'Zone ID': item.zoneId, // New field
             'Price': item.price,
             'Total Price': item.totalPrice,
+            'productDescription' :item.productDescription,
+            'zoneDescription': item.zoneDescription
           };
         }).toList();
-
         // Display information in logs (optional)
         print('Session ended successfully.');
         print('Time taken: $timeTakenStr');
@@ -741,8 +755,19 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       String endTime, String timeTakenStr) async {
     try {
       final pdf = pw.Document();
+      // Helper function to calculate totals for a specific filter
+      double calculateTotalQuantity(List<ScannedItem> items) =>
+          items.fold(0, (sum, item) => sum + item.quantity);
 
-      // Add session details and scanned items to the PDF using MultiPage for automatic pagination
+      double calculateTotalRetail(List<ScannedItem> items) =>
+          items.fold(0, (sum, item) => sum + item.totalPrice);
+
+      // Filtered lists for each report
+      final List<ScannedItem> detailZonesItems = scannedItems; // All items for Detail Zones Report
+      final List<ScannedItem> generalZonesItems = scannedItems; // Grouped by zone for Zones General Report
+      final List<ScannedItem> departmentGeneralItems = scannedItems; // Grouped by department
+      final List<ScannedItem> nofItems =
+      scannedItems.where((item) => item.notOnFile == true).toList();
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -783,11 +808,13 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
               return pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text('Zone Name: ${item.department}',
+                  pw.Text('Zone Name: ${item.zoneName}',
+                      style: pw.TextStyle(fontSize: 16)),
+                  pw.Text('Zone Description: ${item.zoneDescription}',
                       style: pw.TextStyle(fontSize: 16)),
                   pw.Text(
                       'UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
-                  pw.Text('Product Description: ${item.department}',
+                  pw.Text('Product Description: ${item.productDescription}',
                       style: pw.TextStyle(fontSize: 16)),
                   pw.Text('Quantity: ${item.quantity}',
                       style: pw.TextStyle(fontSize: 16)),
@@ -798,6 +825,15 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 ],
               );
             }).toList(),
+            pw.Divider(),
+            pw.Text(
+              'Total Quantity: ${calculateTotalQuantity(detailZonesItems)}',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text(
+              'Total Retail: \$${calculateTotalRetail(detailZonesItems).toStringAsFixed(2)}',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
 
             // Zones General Report
             pw.SizedBox(height: 20),
@@ -809,8 +845,15 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
               return pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text('Zone Name: ${item.department}',
+                  pw.Text('Zone Name: ${item.zoneName}',
                       style: pw.TextStyle(fontSize: 16)),
+                  pw.Text('Zone Description: ${item.zoneDescription}',
+                      style: pw.TextStyle(fontSize: 16)),
+                  pw.Text('Dept Id: ${item.departmentId}',
+                      style: pw.TextStyle(fontSize: 16)),
+                  pw.Text('Dept Name: ${item.department}',
+                      style: pw.TextStyle(fontSize: 16)),
+
                   pw.Text('Total Quantity: ${item.quantity}',
                       style: pw.TextStyle(fontSize: 16)),
                   pw.Text(
@@ -820,7 +863,15 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 ],
               );
             }).toList(),
-
+            pw.Divider(),
+            pw.Text(
+              'Total Quantity: ${calculateTotalQuantity(generalZonesItems)}',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text(
+              'Total Retail: \$${calculateTotalRetail(generalZonesItems).toStringAsFixed(2)}',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
             // Department General Report
             pw.SizedBox(height: 20),
             pw.Text('Department General Report',
@@ -831,6 +882,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
               return pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
+                  pw.Text('Department Id: ${item.departmentId}',
+                      style: pw.TextStyle(fontSize: 16)),
                   pw.Text('Department Name: ${item.department}',
                       style: pw.TextStyle(fontSize: 16)),
                   pw.Text('Total Quantity: ${item.quantity}',
@@ -842,6 +895,15 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 ],
               );
             }).toList(),
+            pw.Divider(),
+            pw.Text(
+              'Total Quantity: ${calculateTotalQuantity(departmentGeneralItems)}',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text(
+              'Total Retail: \$${calculateTotalRetail(departmentGeneralItems).toStringAsFixed(2)}',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
 
             // N.O.F. Report (filtered by notOnFile == true)
             pw.SizedBox(height: 20),
@@ -858,6 +920,8 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 children: [
                   pw.Text('Department Name: ${item.department}',
                       style: pw.TextStyle(fontSize: 16)),
+                  pw.Text('Department Id: ${item.departmentId}',
+                      style: pw.TextStyle(fontSize: 16)),
                   pw.Text(
                       'UPC: ${item.upc}', style: pw.TextStyle(fontSize: 16)),
                   pw.Text('Quantity: ${item.quantity}',
@@ -872,6 +936,15 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                 ],
               );
             }).toList(),
+            pw.Divider(),
+            pw.Text(
+              'Total Quantity: ${calculateTotalQuantity(nofItems)}',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text(
+              'Total Retail: \$${calculateTotalRetail(nofItems).toStringAsFixed(2)}',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
           ],
         ),
       );
@@ -1154,31 +1227,60 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
                   if (reportData['scans'] != null &&
                       reportData['scans'] is List) {
                     print(reportData['scans']);
-                    List<
-                        ScannedItem> scannedItems = (reportData['scans'] as List)
-                        .map((item) {
+                    final List<ScannedItem> scannedItems = (reportData['scans'] as List).map((item) {
                       if (item is Map<String, dynamic>) {
+                        // Safely handle `zone`
+                        final String zoneName = item['zone'] != null && item['zone'] is Map<String, dynamic>
+                            ? (item['zone']['name'] ?? 'Unknown Zone')
+                            : 'Unknown Zone';
+                        final String zoneDescription = item['zone'] != null && item['zone'] is Map<String, dynamic>
+                            ? (item['zone']['description'] ?? 'Unknown Zone Description')
+                            : 'Unknown Zone Description';
+                        final String zoneId = item['zone'] != null && item['zone'] is Map<String, dynamic>
+                            ? (item['zone']['_id'] ?? 'Unknown Zone ID')
+                            : 'Unknown Zone ID';
+
+                        // Safely handle `department`
+                        final String departmentName = item['department'] != null && item['department'] is Map<String, dynamic>
+                            ? (item['department']['name'] ?? 'Unknown Department')
+                            : 'Unknown Department';
+                        final String departmentId = item['department'] != null && item['department'] is Map<String, dynamic>
+                            ? (item['department']['id']?.toString() ?? 'Unknown Department ID')
+                            : 'Unknown Department ID';
+
+                        // Safely handle `productDescription`
+                        final String productDescription = item['productDescription'] is String
+                            ? item['productDescription']
+                            : 'Unknown Product';
+
                         return ScannedItem(
                           upc: item['upc'] ?? 'Unknown',
                           quantity: item['quantity'] ?? 0,
-                          department: item['department'] != null &&
-                              item['department'] is Map
-                              ? (item['department']['name'] ??
-                              'Unknown Department')
+                          department: item['department'] != null && item['department'] is Map
+                              ? (item['department']['name'] ?? 'Unknown Department')
                               : 'Unknown Department',
+                          zoneName: zoneName,
+                            zoneId: zoneId,
+                            departmentId: departmentId,
+                          productDescription: productDescription,
                           price: (item['price'] ?? 0).toDouble(),
                           totalPrice: (item['totalPrice'] ?? 0).toDouble(),
-                          notOnFile: item['notOnFile'] ??
-                              false, // Provide the notOnFile parameter
+                          notOnFile: item['notOnFile'] ?? false,
+                            zoneDescription:zoneDescription
                         );
                       } else {
                         return ScannedItem(
                           upc: 'Unknown',
                           quantity: 0,
+                          zoneName: 'Unknown Zone',
                           department: 'Unknown Department',
-                          price: 0,
-                          totalPrice: 0,
-                          notOnFile: false, // Default value for notOnFile
+                          price: 0.0,
+                          totalPrice: 0.0,
+                          notOnFile: false,
+                            zoneId: 'Unknown Zone ID',
+                            departmentId: 'Unknown Department ID',
+                          productDescription: 'Unknown Product',
+                            zoneDescription: 'Unknow zoneDescription'
                         );
                       }
                     }).toList().cast<
@@ -1268,7 +1370,7 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
     final int minutes = difference.inMinutes;
     final int seconds = difference.inSeconds % 60;
 
-    return '$minutes minutes, $seconds seconds';
+    return '$minutes minutes, $seconds';
   }
 
   Future<void> _requestCameraPermission() async {
@@ -1380,7 +1482,13 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       appBar: AppBar(
         title: Text('Select Zone'),
         backgroundColor: Colors.blueAccent,
-        automaticallyImplyLeading: false, // Removes the default back button
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),// Removes the default back button
       ),
       body: Center(
         child: Padding(
@@ -1545,4 +1653,31 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
     ) ??
         false;
   }
+}
+class ScannedItem {
+  final String upc;
+  final int quantity;
+  final String department;
+  final String departmentId;
+  final String zoneName;
+  final String zoneId;
+  final String zoneDescription;
+  final String productDescription;
+  final double price;
+  final double totalPrice;
+  final bool notOnFile;
+
+  ScannedItem({
+    required this.upc,
+    required this.quantity,
+    required this.department,
+    required this.departmentId,
+    required this.zoneName,
+    required this.zoneId,
+    required this.zoneDescription,
+    required this.productDescription,
+    required this.price,
+    required this.totalPrice,
+    required this.notOnFile,
+  });
 }

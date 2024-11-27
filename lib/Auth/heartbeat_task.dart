@@ -64,12 +64,11 @@ void callbackDispatcher() {
     return Future.value(true);  // Indicate task completion
   });
 }
-
-Future<void> handleLogout([BuildContext? context]) async {
+Future<void> handleLogout(BuildContext context) async {
   final box = GetStorage();
   String? token = box.read('token');
+  box.erase();
 
-  // Proceed with logout if token exists
   if (token != null) {
     try {
       final response = await http.post(
@@ -80,27 +79,27 @@ Future<void> handleLogout([BuildContext? context]) async {
         },
       );
 
-      // Handle successful logout
       if (response.statusCode == 200) {
         print('Logged out successfully.');
         box.remove('token');
         box.remove('deviceId');
-        box.remove('logout_needed'); // Clear the logout flag
+        box.remove('logout_needed');
 
-        // Navigate to the login page if context is provided
-        if (context != null) {
-          Navigator.pushReplacementNamed(context, '/login');
-        }
+        Navigator.pushReplacementNamed(context, '/login');
       } else {
         print('Failed to log out: ${response.body}');
+        Navigator.pushReplacementNamed(context, '/login');
       }
     } catch (e) {
       print('Error while logging out: $e');
+      Navigator.pushReplacementNamed(context, '/login');
     }
   } else {
     print('No token found, cannot log out.');
+    Navigator.pushReplacementNamed(context, '/login');
   }
 }
+
 
 // In your main widget or wherever you handle app lifecycle
 class MyApp extends StatefulWidget {

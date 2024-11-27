@@ -23,11 +23,15 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
   final TextEditingController _userIdController = TextEditingController();
   final GetStorage _storage = GetStorage();
   String? userRole; // Declare userRole as a class variable
-
+ ////
+  bool isLoading = false;
+  List<Map<String, dynamic>> departments = [];
+  List<Map<String, dynamic>> filteredDepartments = [];///
   @override
   void initState() {
     super.initState();
-    userRole = _storage.read('UserRole'); // Initialize userRole
+    userRole = _storage.read('UserRole');
+    // Initialize userRole
   }
 
   // Automatically fetch data when returning to the page
@@ -51,65 +55,108 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
       fetchData('');
     }
   }
-
-  Future<void> uploadXML() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xml'],
-    );
-
-    if (result == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No file selected.')),
-      );
-      return;
-    }
-
-    if (result.files.length > 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please select only one XML file.')),
-      );
-      return;
-    }
-
-    File file = File(result.files.single.path!);
-    String fileName = result.files.single.name;
-
-    if (!fileName.endsWith('.xml')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please select a valid XML file.')),
-      );
-      return;
-    }
-
-    String url = 'https://iscandata.com/api/v1/products/upload-xml';
-    String? token = _storage.read('token');
-
-    if (token == null || token.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No token found. Please log in.')),
-      );
-      return;
-    }
-
+  Future<void> _fetchDepartments({String? userId}) async {
     setState(() {
-      _isUploading = true;
+      isLoading = true;
     });
 
-    String? userId; // Variable to hold userId for admin
+    String baseUrl = 'https://iscandata.com/api/v1/departments';
+    String? token = _storage.read('token');
+    final url = userId != null ? '$baseUrl?userId=$userId' : baseUrl;
 
-    // If the user is an admin, prompt for the userId
-    if (userRole == 'admin') {
-      userId = await _promptForUserId();
-      if (userId == null) {
-        setState(() {
-          _isUploading = false;
-        });
-        return; // Exit if no userId is provided
-      }
-    }
+    print('Fetching from URL: $url');
 
     try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        if (data.containsKey('data') && data['data']['departments'] is List) {
+          setState(() {
+            departments = List<Map<String, dynamic>>.from(data['data']['departments']);
+            filteredDepartments = departments;
+          });
+        } else {
+          setState(() {
+            departments = [];
+            filteredDepartments = [];
+          });
+        }
+      } else if (response.statusCode == 401) {
+        Navigator.of(context).pushReplacementNamed('/login');
+      } else {
+        print('Failed to fetch departments. Status code: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error during department fetch: $e');
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+  Future<void> uploadXML() async {
+    try {
+      // Check user role and fetch departments
+      String? userId;
+      if (userRole == 'admin') {
+        userId = await _promptForUserId();
+        if (userId == null || userId.isEmpty) {
+          _showSnackBar('User ID is required for admins.');
+          return;
+        }
+      }
+
+      // Fetch departments with the provided userId (for admin)
+      await _fetchDepartments(userId: userId);
+
+      // Check if departments are empty
+      if (departments.isEmpty) {
+        _showAlert('No Departments Found', 'You must add or upload departments before uploading products.');
+        return;
+      }
+
+      // File selection
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xml'],
+      );
+
+      if (result == null) {
+        _showSnackBar('No file selected.');
+        return;
+      }
+
+      if (result.files.length > 1) {
+        _showSnackBar('Please select only one XML file.');
+        return;
+      }
+
+      File file = File(result.files.single.path!);
+      String fileName = result.files.single.name;
+
+      if (!fileName.endsWith('.xml')) {
+        _showSnackBar('Please select a valid XML file.');
+        return;
+      }
+
+      String? token = _storage.read('token');
+      if (token == null || token.isEmpty) {
+        _showSnackBar('No token found. Please log in.');
+        return;
+      }
+
+      setState(() {
+        _isUploading = true;
+      });
+
+      // Prepare form data
       Map<String, dynamic> formDataMap = {
         'file': await MultipartFile.fromFile(
           file.path,
@@ -118,15 +165,15 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
         ),
       };
 
-      // Include userId if the user is an admin
       if (userRole == 'admin') {
         formDataMap['userId'] = userId;
       }
 
       FormData formData = FormData.fromMap(formDataMap);
 
+      // API request
       var response = await Dio().post(
-        url,
+        'https://iscandata.com/api/v1/products/upload-xml',
         data: formData,
         options: Options(
           headers: {'Authorization': 'Bearer $token'},
@@ -134,101 +181,29 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
         ),
       );
 
+      // Handle response
       if (response.statusCode == 200) {
-        var message = response.data['message']; // Success message
-        var updatedCount = response.data['updatedCount']; // Count of updated products
-        var newCount = response.data['newCount']; // Count of new products
-        var departmentNotFoundCount = response.data['departmentNotFoundCount']; // Count of departments not found
-        // Removed timeTaken and alreadyExistingCount as they do not exist in the response
-        var departmentNotFound = response.data['departmentNotFound']; // List of departments not found
-        var updatedProducts = response.data['updatedProducts']; // List of updated products
+        _showSuccessDialog(response.data);
 
-
-        // Constructing the result message
-        String resultMessage =
-            "XML uploaded successfully!\n"
-            "Updated count: $updatedCount\n"
-            "New count: $newCount\n"
-            "Department not found count: $departmentNotFoundCount\n";
-        // Showing the alert dialog
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text('Upload Status'),
-              content: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(resultMessage),
-                    SizedBox(height: 10), // Add some space
-                    Text('Department Not Found Details:',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    SizedBox(height: 10),
-                    DataTable(
-                      columns: [
-                        DataColumn(label: Text('UPC')),
-                        DataColumn(label: Text('DeptId')),
-                      ],
-                      rows: departmentNotFound.map<DataRow>((item) {
-                        return DataRow(cells: [
-                          DataCell(Text(item['upc'].toString())), // UPC column
-                          DataCell(Text(item['departmentId'].toString())), // DeptId column
-                        ]);
-                      }).toList(),
-                    ),
-                    SizedBox(height: 20), // Add space between sections
-                    Text('Updated Products:',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    SizedBox(height: 10),
-                    DataTable(
-                      columns: [
-                        DataColumn(label: Text('UPC')),
-                        DataColumn(label: Text('New Price')),
-                        DataColumn(label: Text('Previous Price')),
-                      ],
-                      rows: updatedProducts.map<DataRow>((item) {
-                        return DataRow(cells: [
-                          DataCell(Text(item['upc'].toString())), // UPC column
-                          DataCell(Text(item['newPrice'].toString())), // New Price column
-                          DataCell(Text(item['previousPrice'].toString())), // Previous Price column
-                        ]);
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: Text('OK'),
-                ),
-              ],
-            );
-          },
-        );
+        // Fetch products automatically after successful upload
+        if (userId != null) {
+          fetchData(userId);
+        } else {
+          fetchData('');
+        }
       } else {
-        var errorMessage = response.data['message'] ?? 'Upload failed.';
-        print(' $errorMessage');
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$errorMessage')),
-        );
+        final errorMessage = response.data['message'] ?? 'Upload failed.';
+        _showSnackBar(errorMessage);
+        print('Error: $errorMessage');
       }
     } catch (e) {
+      // Error handling
       if (e is DioError) {
-        print('Dio error: ${e.response?.data}');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(
-              'Error uploading file: ${e.response?.data ?? e.message}')),
-        );
+        print('DioError: ${e.response?.data}');
+        _showSnackBar('Error uploading file: ${e.response?.data ?? e.message}');
       } else {
         print('Unexpected error: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Unexpected error: $e')),
-        );
+        _showSnackBar('Unexpected error: $e');
       }
     } finally {
       setState(() {
@@ -236,7 +211,107 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
       });
     }
   }
+  void _showAlert(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
+// Helper to show success dialog
+  void _showSuccessDialog(dynamic data) {
+    var updatedCount = data['updatedCount'];
+    var newCount = data['newCount'];
+    var departmentNotFoundCount = data['departmentNotFoundCount'];
+    var departmentNotFound = data['departmentNotFound'];
+    var updatedProducts = data['updatedProducts'];
+
+    String resultMessage = '''
+XML uploaded successfully!
+Updated count: $updatedCount
+New count: $newCount
+Department not found count: $departmentNotFoundCount
+''';
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Upload Status'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(resultMessage),
+                if (departmentNotFound != null && departmentNotFound.isNotEmpty) ...[
+                  SizedBox(height: 10),
+                  Text('Department Not Found Details:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 10),
+                  DataTable(
+                    columns: [
+                      DataColumn(label: Text('UPC')),
+                      DataColumn(label: Text('DeptId')),
+                    ],
+                    rows: departmentNotFound.map<DataRow>((item) {
+                      return DataRow(cells: [
+                        DataCell(Text(item['upc'].toString())),
+                        DataCell(Text(item['departmentId'].toString())),
+                      ]);
+                    }).toList(),
+                  ),
+                ],
+                if (updatedProducts != null && updatedProducts.isNotEmpty) ...[
+                  SizedBox(height: 20),
+                  Text('Updated Products:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 10),
+                  DataTable(
+                    columns: [
+                      DataColumn(label: Text('UPC')),
+                      DataColumn(label: Text('New Price')),
+                      DataColumn(label: Text('Previous Price')),
+                    ],
+                    rows: updatedProducts.map<DataRow>((item) {
+                      return DataRow(cells: [
+                        DataCell(Text(item['upc'].toString())),
+                        DataCell(Text(item['newPrice'].toString())),
+                        DataCell(Text(item['previousPrice'].toString())),
+                      ]);
+                    }).toList(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+// Helper to show SnackBar
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
   // Helper function to show an alert dialog for userId input
   Future<String?> _promptForUserId() async {
     TextEditingController userIdController = TextEditingController();
@@ -422,7 +497,7 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
       _isUploading = true;
     });
 
-    var url = 'https://iscandata.com/api/v1/products/$upc';
+    var url = 'https://iscandata.com/api/v1/products/$upc?userId=$userId';
     String? token = _storage.read('token');
 
     if (token == null || token.isEmpty) {
@@ -437,18 +512,12 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
 
     var headers = {
       'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
     };
-
-    var body = jsonEncode({
-      'userId': userId, // Include the userId in the request body
-    });
 
     try {
       var response = await http.delete(
         Uri.parse(url),
         headers: headers,
-        body: body,
       );
 
       if (response.statusCode == 200) {
@@ -458,6 +527,7 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
         fetchData(userId); // Refresh the product list after deletion
       } else {
         var errorMessage = jsonDecode(response.body)['message'] ?? 'Delete failed.';
+        print("ERROR MESSAGE DELETE $errorMessage");
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$errorMessage')),
         );
@@ -466,12 +536,14 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error deleting product: $e')),
       );
+      print("Error deleting product: $e");
     } finally {
       setState(() {
         _isUploading = false;
       });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -549,8 +621,24 @@ class _UploadAndFetchPageState extends State<UploadAndFetchPage> {
               : Container(),
           Expanded(
             child: _filteredProducts.isEmpty
-                ? Center (child: Text('No products to Show \n'
-                'If You are Admin Hit fetch Button and Enter the UserId  '))
+                ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'No products to show.\n',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (userRole == 'admin') // Display this message only for admins
+                    Text(
+                      'Enter User ID to fetch the data.\nHit the "Fetch" button and enter the User ID.',
+                      style: TextStyle(fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                ],
+              ),
+            )
                 : ListView.builder(
               itemCount: _filteredProducts.length,
               itemBuilder: (context, index) {

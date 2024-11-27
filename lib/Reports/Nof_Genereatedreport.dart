@@ -1,251 +1,333 @@
+
+
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:io';
 import 'package:get_storage/get_storage.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:xml/xml.dart' as xml;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:mime/mime.dart';
+import 'package:http_parser/http_parser.dart';
+Future<Map<String, dynamic>> fetchReportData(
+    String startDateTime, String endDateTime, String token, String reportType, String? userId) async {
+  final String url =
+      'https://iscandata.com/api/v1/reports/generate-nof-report?startDate=$startDateTime&endDate=$endDateTime&reportType=$reportType${userId != null ? '&userId=$userId' : ''}';
 
-class  Nof_ReportPage extends StatefulWidget {
-  @override
-  _ReportPageState createState() => _ReportPageState();
+  try {
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      print('Error fetching report: ${response.body}');
+      throw Exception('Failed to load report data: ${response.body}');
+    }
+  } catch (error) {
+    print('API Error: $error');
+    rethrow;
+  }
 }
 
-class _ReportPageState extends State<Nof_ReportPage> {
-  late Future<Map<String, dynamic>?> _reportData;
-  final storage = GetStorage();
-  String _selectedReportType = 'daily';
-  final _searchController = TextEditingController();
-  List<dynamic> _filteredReportList = [];
-  String? _downloadPath;
-  String? _userId;
+class Nof_ReportPage extends StatefulWidget {
+  @override
+  _NofReportPageState createState() => _NofReportPageState();
+}
 
+class _NofReportPageState extends State<Nof_ReportPage> {
+  late Future<Map<String, dynamic>> _reportData;
+  final storage = GetStorage();
+  String _selectedReportType = 'custom';
+  String? _userId;
+  String token = '';
+  bool _isLoading = false;
+  String? userRole;
+  DateTime _startDate = DateTime.now().subtract(Duration(days: 10));
+  DateTime _endDate = DateTime.now();
+  TimeOfDay _startTime = TimeOfDay(hour: 0, minute: 0);
+  TimeOfDay _endTime = TimeOfDay(hour: 23, minute: 59);
+  String? _downloadPath;
   @override
   void initState() {
     super.initState();
-    _searchController.addListener(_filterReports);
-    _downloadPath = storage.read('downloadPath'); // Read cached download path
-    _updateReportData();
-  }
-
-  Future<Map<String, dynamic>?> fetchReportData(String reportType, String token, BuildContext context) async {
-    // Check if the user role is admin
-    String userRole = storage.read('userRole') ?? ''; // Assuming userRole is stored in GetStorage
-    final url = 'https://iscandata.com/api/v1/reports/generate-report?reportType=$reportType${userRole == 'admin' && _userId != null ? '&userId=$_userId' : ''}';
-
-    try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else if (response.statusCode == 401) {
-        Navigator.pushReplacementNamed(context, '/login');
-        return null; // Navigate to login if token is blacklisted
-      } else {
-        final errorData = json.decode(response.body);
-        throw Exception('Failed to load report data: ${errorData['message']}');
-      }
-    } catch (error) {
-      print('Error fetching data: $error');
-      return null;
+    token = storage.read('token') ?? '';
+    userRole = storage.read('userRole') ?? '';
+    if (userRole == 'admin') {
+      _promptUserId();
+    } else {
+      _fetchReport();
     }
   }
-  void _showUserIdDialog(String reportType) {
-    final userIdController = TextEditingController();
-    showDialog(
+
+  Future<void> _selectDateRange(BuildContext context) async {
+    final DateTimeRange? picked = await showDateRangePicker(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Enter User ID'),
-          content: TextField(
-            controller: userIdController,
-            decoration: InputDecoration(
-              labelText: 'User  ID',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                setState(() {
-                  _userId = userIdController.text; // Set the userId
-                  _updateReportData(); // Fetch report data with new userId
-                });
-              },
-              child: Text('Submit'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('Cancel'),
-            ),
-          ],
-        );
-      },
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+      initialDateRange: DateTimeRange(start: _startDate, end: _endDate),
     );
-  }
-  void _updateReportData() async {
-    String token = storage.read('token') ?? '';
-    // Fetch report data
-    setState(() {
-      _reportData = fetchReportData(_selectedReportType, token, context);
-    });
-  }
 
+    if (picked != null) {
+      setState(() {
+        _startDate = picked.start;
+        _endDate = picked.end;
+      });
 
-
-  void _filterReports() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      _filteredReportList = _filteredReportList.where((report) {
-        final deptName = (report['departmentName'] as String).toLowerCase();
-        return deptName.contains(query);
-      }).toList();
-    });
+      // Allow the user to select a time range after selecting the date range
+      await _selectTimeRange(context);
+    }
   }
 
-  Future<void> _generateAndSaveCSV(Map<String, dynamic> reportData) async {
-    String csvData = 'Department Name, Zone Name, UPC, Description, Total Qty\n'; // CSV Header
+  Future<void> _selectTimeRange(BuildContext context) async {
+    TimeOfDay? pickedStartTime = await showTimePicker(
+      context: context,
+      initialTime: _startTime,
+    );
 
-    final reportList = reportData['data']['reportData'] as List<dynamic>;
-
-    for (var zone in reportList) {
-      for (var device in zone['devices']) {
-        for (var product in device['products']) {
-          csvData +=
-          '${product['departmentName'] ?? ''}, '
-              '${zone['zoneName'] ?? ''}, '
-              '${product['upc'] ?? ''}, '
-              '${product['description'] ?? ''}, '
-              '${product['totalQty']?.toString() ?? ' 0'}\n';
-        }
-      }
+    if (pickedStartTime != null) {
+      setState(() {
+        _startTime = pickedStartTime;
+      });
     }
 
-    await _saveFile(csvData, 'csv');
+    TimeOfDay? pickedEndTime = await showTimePicker(
+      context: context,
+      initialTime: _endTime,
+    );
+
+    if (pickedEndTime != null) {
+      setState(() {
+        _endTime = pickedEndTime;
+      });
+    }
+
+    // Prompt for User ID if the user is an admin
+    _promptUserId();
   }
 
-  Future<void> _generateAndSaveXML(Map<String, dynamic> reportData) async {
-    final builder = xml.XmlBuilder();
-    builder.processing('xml', 'version="1.0"');
-    builder.element('Report', nest: () {
-      final reportList = reportData['data']['reportData'] as List<dynamic>;
-
-      for (var zone in reportList) {
-        builder.element('Zone', nest: () {
-          builder.element('zoneName', nest: zone['zoneName'] ?? 'Unknown Zone');
-          for (var device in zone['devices'] ?? []) {
-            builder.element('Device', nest: () {
-              for (var product in device['products'] ?? []) {
-                builder.element('Product', nest: () {
-                  builder.element('departmentName', nest: product['departmentName'] ?? 'Unknown Department');
-                  builder.element('upc', nest: product['upc'] ?? 'Unknown UPC');
-                  builder.element('description', nest: product['description'] ?? 'No Description');
-                  builder.element('totalQty', nest: product['totalQty']?.toString() ?? '0');
-                });
-              }
-            });
-          }
-        });
-      }
-    });
-
-    final xmlData = builder.buildDocument().toString();
-    await _saveFile(xmlData, 'xml');
-  }
-
-  Future<void> _saveFile(String data, String extension) async {
-    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-    if (selectedDirectory == null) {
-      print('No directory selected. File not saved.');
+  void _fetchReport() {
+    if (userRole == 'admin' && (_userId == null || _userId!.isEmpty)) {
+      print('Admin must provide a userId before fetching reports.');
       return;
     }
 
-    try {
-      final fileName = 'report_${DateTime.now().millisecondsSinceEpoch}.$extension';
-      final filePath = '$selectedDirectory/$fileName';
-      final file = File(filePath);
-      await file.writeAsString(data);
+    String startDateTime = '${_formatDateTime(_startDate, _startTime)}';
+    String endDateTime = '${_formatDateTime(_endDate, _endTime)}';
 
-      // Store the selected path in GetStorage
-      storage.write('downloadPath', selectedDirectory);
+    setState(() {
+      _isLoading = true;
+    });
 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('$extension file saved to $filePath'),
-        backgroundColor: Colors.green,
-      ));
-    } catch (e) {
-      print('Error saving file: $e'); // Log error to console
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Cant use this folder . Instead of this ! Choose Document Folder'),
-        backgroundColor: Colors.red,
-      ));
+    _reportData = fetchReportData(
+      startDateTime,
+      endDateTime,
+      token,
+      _selectedReportType,
+      _userId,
+    ).catchError((error) {
+      setState(() {
+        _isLoading = false;
+      });
+      print('Error fetching report: $error');
+      throw Exception('Unable to fetch report.');
+    }).whenComplete(() {
+      setState(() {
+        _isLoading = false;
+      });
+    });
+  }
+
+  Future<void> _promptUserId() async {
+    if (_userId == null || _userId!.isEmpty) {
+      String? userId = await showDialog<String>(
+        context: context,
+        builder: (BuildContext context) {
+          TextEditingController userIdController = TextEditingController();
+          return AlertDialog(
+            title: Text('Enter User ID'),
+            content: TextField(
+              controller: userIdController,
+              decoration: InputDecoration(labelText: 'User ID'),
+            ),
+            actions: [
+              TextButton(
+                child: Text('Cancel'),
+                onPressed: () => Navigator.pop(context, null),
+              ),
+              TextButton(
+                child: Text('Submit'),
+                onPressed: () => Navigator.pop(context, userIdController.text),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (userId != null && userId.isNotEmpty) {
+        setState(() {
+          _userId = userId;
+        });
+        _fetchReport();
+      }
     }
   }
 
-  void _showDownloadOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return Container(
-          height: 250,
-          child: Column(
-            children: [
-              ListTile(
-                leading: Icon(Icons.file_download),
-                title: Text('Download as CSV'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final report = await _reportData;
-                  if (report != null) await _generateAndSaveCSV(report);
-                },
+  String _formatDateTime(DateTime date, TimeOfDay time) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day
+        .toString().padLeft(2, '0')}T${time.hour.toString().padLeft(
+        2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
+  }
+  Future<void> _generateAndSavePDF(List<dynamic> reportList, Map<String, dynamic> overallTotals) async {
+    try {
+      final pdf = pw.Document();
+
+      // Flatten the nested structure similar to how the UI processes it
+      final flattenedProducts = reportList.expand((zone) {
+        final devices = zone['devices'] as List<dynamic>? ?? [];
+        return devices.expand((device) {
+          final products = device['products'] as List<dynamic>? ?? [];
+          return products;
+        });
+      }).toList();
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return [
+              // Title
+              pw.Text(
+                'NOF Report',
+                style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+                textAlign: pw.TextAlign.center,
               ),
-              ListTile(
-                leading: Icon(Icons.file_download),
-                title: Text('Download as XML'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final report = await _reportData;
-                  if (report != null) await _generateAndSaveXML(report);
-                },
+              pw.SizedBox(height: 10),
+
+              // Table for product details
+              pw.Table.fromTextArray(
+                headers: ['UPC', 'Description', 'Qty', 'Retail'],
+                data: flattenedProducts.map((product) => [
+                  product['upc'] ?? 'N/A',
+                  product['description'] ?? 'N/A',
+                  product['totalQty']?.toString() ?? '0',
+                  '\$${product['retailPrice']?.toStringAsFixed(2) ?? '0.00'}',
+                ]).toList(),
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 12,
+                ),
+                headerDecoration: pw.BoxDecoration(
+                  color: PdfColors.grey300,
+                ),
+                cellStyle: pw.TextStyle(fontSize: 10),
+                cellAlignment: pw.Alignment.centerLeft,
               ),
-              ListTile(
-                leading: Icon(Icons.folder),
-                title: Text('Change Download Location'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-                  if (selectedDirectory != null) {
-                    setState(() {
-                      _downloadPath = selectedDirectory;
-                      storage.write('downloadPath', selectedDirectory); // Cache the new path
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('Download path changed to $selectedDirectory'),
-                    ));
-                  }
-                },
+              pw.SizedBox(height: 20),
+
+              // Overall Totals Section
+              pw.Text(
+                'Overall Totals',
+                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
               ),
-            ],
-          ),
+              pw.SizedBox(height: 5),
+              pw.Text('Total Qty: ${overallTotals['totalQty'] ?? '0'}'),
+              pw.Text('Total Retail: \$${overallTotals['totalRetail']?.toStringAsFixed(2) ?? '0.00'}'),
+            ];
+          },
+        ),
+      );
+
+      // Save PDF to a file
+      if (_downloadPath == null) {
+        _downloadPath = await FilePicker.platform.getDirectoryPath();
+        if (_downloadPath == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No directory selected. PDF not saved.')),
+          );
+          return;
+        }
+      }
+
+      final fileName = 'Nof_report${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final filePath = '$_downloadPath/$fileName';
+      final file = File(filePath);
+      await file.writeAsBytes(await pdf.save());
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF saved to $filePath')),
+      );
+
+      // Send the PDF via email if required
+      await _sendEmailWithPDF(filePath);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save PDF. Please try again.')),
+      );
+    }
+  }
+
+  Future<void> _sendEmailWithPDF(String filepath) async {
+    try {
+      final token = storage.read('token') as String?;
+      if (token == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Authentication token not available')),
         );
-      },
-    );
+        return;
+      }
+
+      final file = File(filepath);
+      if (!file.existsSync()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('File does not exist at the specified path.')),
+        );
+        return;
+      }
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://iscandata.com/api/v1/sessions/send-report'),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+      request.files.add(await http.MultipartFile.fromPath(
+        'report',
+        filepath,
+        contentType: MediaType('application', 'pdf'),
+      ));
+
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Email sent successfully!')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Failed to send email: ${response.reasonPhrase}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('An error occurred while sending the email.')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Reports', style: TextStyle(color: Colors.white)),
+        title: Text('N.O.F. Report'),
         backgroundColor: Colors.blueAccent,
       ),
       body: Padding(
@@ -253,163 +335,227 @@ class _ReportPageState extends State<Nof_ReportPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Select Report Type', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            SizedBox(height: 8),
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.blueAccent),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: DropdownButton<String>(
-                isExpanded: true,
-                value: _selectedReportType,
-                items: <String>['daily', 'weekly', 'monthly'].map((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
+            DropdownButton<String>(
+              isExpanded: true,
+              value: _selectedReportType,
+              items: <String>['custom', 'daily', 'weekly', 'monthly']
+                  .map((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
+              onChanged: (String? newValue) async {
+                if (newValue == null) return;
+
+                // Prompt User ID for all report types
+                String? userId = await showDialog<String>(
+                  context: context,
+                  builder: (BuildContext context) {
+                    TextEditingController userIdController =
+                    TextEditingController();
+                    return AlertDialog(
+                      title: Text('Enter User ID'),
+                      content: TextField(
+                        controller: userIdController,
+                        decoration: InputDecoration(labelText: 'User ID'),
+                      ),
+                      actions: [
+                        TextButton(
+                          child: Text('Cancel'),
+                          onPressed: () => Navigator.pop(context, null),
+                        ),
+                        TextButton(
+                          child: Text('Submit'),
+                          onPressed: () =>
+                              Navigator.pop(context, userIdController.text),
+                        ),
+                      ],
+                    );
+                  },
+                );
+
+                if (userId == null || userId.isEmpty) {
+                  // If User ID is not provided, revert dropdown selection
                   setState(() {
-                    _selectedReportType = newValue!;
-                    // Check user role
-                    String userRole = storage.read('userRole') ?? '';
-                    if (userRole == 'admin') {
-                      // Trigger the dialog to get userId
-                      _showUserIdDialog(_selectedReportType);
-                    } else {
-                      // Fetch report data without userId
-                      _updateReportData();
-                    }
+                    _selectedReportType = _selectedReportType;
                   });
-                },
-              ),
+                  return;
+                }
+
+                setState(() {
+                  _userId = userId; // Save the User ID
+                  _selectedReportType = newValue; // Update the selected report type
+                });
+
+                if (newValue == 'custom') {
+                  // For custom report, allow Date and Time selection
+                  await _selectDateRange(context);
+                } else {
+                  // For other report types, fetch the report immediately
+                  _fetchReport();
+                }
+              },
             ),
+            if (_selectedReportType == 'custom') ...[
+              SizedBox(height: 8),
+              Text('Selected Start: ${_formatDateTime(_startDate, _startTime)}'),
+              Text('Selected End: ${_formatDateTime(_endDate, _endTime)}'),
+            ],
             SizedBox(height: 16),
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Search Department Name',
-                prefixIcon: Icon(Icons.search),
-              ),
-            ),
-            SizedBox(height: 16),
-            Expanded(
-              child: FutureBuilder<Map<String, dynamic>?>(
-                future: _reportData,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Center(child: CircularProgressIndicator());
-                  } else if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  } else if (!snapshot.hasData || snapshot.data == null) {
-                    return Center(child: Text('No reports found'));
-                  } else {
-                    final reportData = snapshot.data!['data'];
-                    if (reportData == null) {
-                      return Center(child: Text('No report data available'));
-                    }
+            if (_isLoading)
+              Center(child: CircularProgressIndicator())
+            else
+              Expanded(
+                child: FutureBuilder<Map<String, dynamic>>(
+                  future: _reportData,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return Center(child: CircularProgressIndicator());
+                    } else if (!snapshot.hasData || snapshot.data == null) {
+                      return Center(
+                        child: Text(
+                          'No data available. Select Report Type and enter the User ID',
+                          style: TextStyle(fontSize: 16),
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    } else if (snapshot.hasError) {
+                      return Center(
+                        child: Text(
+                          "Error fetching report. Please try again.",
+                          style: TextStyle(fontSize: 16, color: Colors.red),
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    } else {
+                      final statusCode = snapshot.data?['status'];
 
-                    final reportList = reportData['reportData'];
-                    if (reportList == null) {
-                      return Center(child: Text('No report data available'));
-                    }
+                      if (statusCode == 400) {
+                        return Center(
+                          child: Text(
+                            'No Data Found for Report',
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                        );
+                      } else if (statusCode != 200) {
+                        return Center(
+                          child: Text(
+                            snapshot.data?['message'] ??
+                                'An unexpected error occurred.',
+                            style: TextStyle(fontSize: 16),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      }
 
-                    _filteredReportList = reportList; // Initialize the filtered list
+                      final reportData = snapshot.data!['data']['formattedReport']
+                      as List<dynamic>;
+                      final overallTotals =
+                      snapshot.data!['data']['overallTotals'];
 
-                    return ListView.builder(
-                      itemCount: _filteredReportList.length,
-                      itemBuilder: (context, index) {
-                        final zone = _filteredReportList[index];
-                        final devices = zone['devices'];
+                      if (reportData.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'No Data Found for Selected Report Type',
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                        );
+                      }
 
-                        return Column(
-                          children: [
-                            Text(
-                              'Zone Name: ${zone['zoneName']}',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
-                            SizedBox(height: 8),
-                            ListView.builder(
-                              shrinkWrap: true,
-                              physics: NeverScrollableScrollPhysics(),
-                              itemCount: devices.length,
-                              itemBuilder: (context, deviceIndex) {
-                                final device = devices[deviceIndex];
-                                final products = device['products'];
-
-                                return Column(
+                      return ListView.builder(
+                        itemCount: reportData.length + 1, // Add 1 for the final summary card
+                        itemBuilder: (context, index) {
+                          if (index < reportData.length) {
+                            // Regular department cards
+                            final report = reportData[index];
+                            final products =
+                            report['products'] as List<dynamic>;
+                            return Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Device Products:',
-                                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                      'Dept: ${report['deptName']}',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16),
                                     ),
-                                    SizedBox(height: 4),
-                                    ListView.builder(
-                                      shrinkWrap: true,
-                                      physics: NeverScrollableScrollPhysics(),
-                                      itemCount: products.length,
-                                      itemBuilder: (context, productIndex) {
-                                        final product = products[productIndex];
-
-                                        return Card(
-                                          elevation: 4,
-                                          margin: EdgeInsets.symmetric(vertical: 4),
-                                          color: Colors.blue[300],
-                                          child: ListTile(
-                                            title: Container(
-                                              padding: EdgeInsets.all(8.0),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    'Department Name: ${product['departmentName']}',
-                                                    style: TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: Colors.black,
-                                                    ),
-                                                  ),
-                                                  SizedBox(height: 8),
-                                                  Text(
-                                                    'UPC: ${product['upc']}',
-                                                    style: TextStyle(color: Colors.black),
-                                                  ),
-                                                  SizedBox(height: 8),
-                                                  Text(
-                                                    'Description: ${product['description']}',
-                                                    style: TextStyle(color: Colors.black),
-                                                  ),
-                                                  SizedBox(height: 8),
-                                                  Text(
-                                                    'Total Qty: ${product['totalQty']}',
-                                                    style: TextStyle(color: Colors.black),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
+                                    const SizedBox(height: 5),
+                                    ...products.map((product) => Padding(
+                                      padding:
+                                      const EdgeInsets.only(bottom: 5.0),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                        children: [
+                                          Text('UPC: ${product['upc']}'),
+                                          Text(
+                                              'Description: ${product['description']}'),
+                                          Text('Qty: ${product['totalQty']}'),
+                                          Text(
+                                              'Retail: \$${product['retailPrice']}'),
+                                        ],
+                                      ),
+                                    )),
                                   ],
-                                );
-                              },
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  }
-                },
+                                ),
+                              ),
+                            );
+                          } else {
+                            // Final summary card
+                            return Card(
+                              color: Colors.grey[200],
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Overall Totals',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                        'Total Quantity: ${overallTotals['totalQty']}'),
+                                    Text(
+                                        'Total Retail: \$${overallTotals['totalRetail']}'),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    }
+                  },
+                ),
               ),
-            )
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showDownloadOptions,
-        child: Icon(Icons.download),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final snapshot = await _reportData;
+          if (snapshot['status'] == 'success') {
+            final reportList = snapshot['data']['reportData'] ?? [];
+            final overallTotals = snapshot['data']['overallTotals'] ?? {};
+            await _generateAndSavePDF(reportList, overallTotals);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to generate PDF.')),
+            );
+          }
+        },
+        label: Text('Download & Email'),
+        icon: Icon(Icons.download),
+        backgroundColor: Colors.blueAccent,
       ),
     );
   }

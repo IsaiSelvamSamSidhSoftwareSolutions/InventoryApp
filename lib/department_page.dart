@@ -22,13 +22,16 @@ class _DepartmentPageState extends State<DepartmentPage> {
   String? highlightedDepartmentId;
   String? userEmail;
   String? userRole;
+
   Future<void> _getUserEmail() async {
     setState(() {
       userEmail = storage.read('email');
       userRole = storage.read('UserRole');
-      print("UserEmail -- $userEmail");// Assuming email is stored in GetStorage
+      print(
+          "UserEmail -- $userEmail"); // Assuming email is stored in GetStorage
     });
   }
+
   @override
   void initState() {
     super.initState();
@@ -36,13 +39,19 @@ class _DepartmentPageState extends State<DepartmentPage> {
     _getUserEmail();
   }
 
-  Future<void> _fetchDepartments() async {
+  Future<void> _fetchDepartments({String? userId}) async {
     setState(() {
       isLoading = true;
     });
 
-    final url = 'https://iscandata.com/api/v1/departments'; // Replace with your API URL
+    // Base URL
+    String baseUrl = 'https://iscandata.com/api/v1/departments';
     String? token = storage.read('token');
+
+    // Construct the URL with the query parameter
+    final url = userId != null ? '$baseUrl?userId=$userId' : baseUrl;
+
+    print('Fetching from URL: $url'); // Debugging URL
 
     try {
       final response = await http.get(
@@ -53,19 +62,32 @@ class _DepartmentPageState extends State<DepartmentPage> {
         },
       );
 
+      print('Response Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
 
         if (data.containsKey('data') && data['data']['departments'] is List) {
           setState(() {
-            departments = List<Map<String, dynamic>>.from(data['data']['departments']);
+            departments =
+            List<Map<String, dynamic>>.from(data['data']['departments']);
             filteredDepartments = departments;
+          });
+        } else {
+          print('No departments found in the response.');
+          setState(() {
+            departments = [];
+            filteredDepartments = [];
           });
         }
       } else if (response.statusCode == 401) {
         Future.delayed(Duration(seconds: 2), () {
           Navigator.of(context).pushReplacementNamed('/login');
         });
+      } else {
+        print(
+            'Failed to fetch departments. Status code: ${response.statusCode}');
       }
     } catch (e) {
       print('Error during department fetch: $e');
@@ -75,14 +97,19 @@ class _DepartmentPageState extends State<DepartmentPage> {
       });
     }
   }
-
-  Future<void> _addDepartment(String id, String name) async {
+  Future<void> _addDepartment(String id, String name, [String? userId]) async {
     setState(() {
       isLoading = true;
     });
 
-    final url = 'https://iscandata.com/api/v1/departments';
+    // Base URL for the API
+    String url = 'https://iscandata.com/api/v1/departments';
     String? token = storage.read('token');
+
+    // Append User ID as a query parameter if provided
+    if (userId != null) {
+      url += '?userId=$userId';
+    }
 
     try {
       final response = await http.post(
@@ -96,18 +123,28 @@ class _DepartmentPageState extends State<DepartmentPage> {
 
       if (response.statusCode == 201) {
         _showSuccessAlert('Department Added Successfully');
-        _highlightDepartment(id);
         _fetchDepartments();
+      } else if (response.statusCode == 400) {
+        final responseBody = jsonDecode(response.body);
+        if (responseBody['message']
+            .contains('Department with this ID already exists')) {
+          _showErrorAlert('Duplicate Department ID. Please choose another.');
+        } else {
+          _showErrorAlert('Failed to add department. ${responseBody['message']}');
+        }
+      } else {
+        print('Failed to add department. Status code: ${response.statusCode}');
+        print('Response: ${response.body}');
       }
     } catch (e) {
       print('Error during department addition: $e');
+      _showErrorAlert('An error occurred while adding the department.');
     } finally {
       setState(() {
         isLoading = false;
       });
     }
   }
-
   Future<void> _updateDepartment(String id, String name) async {
     setState(() {
       isLoading = true;
@@ -157,39 +194,60 @@ class _DepartmentPageState extends State<DepartmentPage> {
       {String? departmentId, String? departmentName}) {
     idController.text = departmentId ?? '';
     nameController.text = departmentName ?? '';
+    TextEditingController userIdController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text(departmentId == null ? 'Add Department' : 'Edit Department'),
-          content: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: idController,
-                  decoration: InputDecoration(
-                    labelText: 'Department ID',
-                    border: OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Colors.grey[200],
+          title: Text(
+              departmentId == null ? 'Add Department' : 'Edit Department'),
+          content: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: idController,
+                    decoration: InputDecoration(
+                      labelText: 'Department ID',
+                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: Colors.grey[200],
+                    ),
+                    keyboardType: TextInputType.text,
+                    enabled: departmentId == null,
                   ),
-                  keyboardType: TextInputType.number,
-                  enabled: departmentId == null,
-                ),
-                SizedBox(height: 10),
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(
-                    labelText: 'Department Name',
-                    border: OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Colors.grey[200],
+                  SizedBox(height: 10),
+                  TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'Department Name',
+                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: Colors.grey[200],
+                    ),
+                    keyboardType: TextInputType.text,
                   ),
-                ),
-              ],
+                  if (userRole == 'admin') // Show User ID field only for admin
+                    Column(
+                      children: [
+                        SizedBox(height: 10),
+                        TextField(
+                          controller: userIdController,
+                          decoration: InputDecoration(
+                            labelText: 'User ID',
+                            border: OutlineInputBorder(),
+                            filled: true,
+                            fillColor: Colors.grey[200],
+                          ),
+                          keyboardType: TextInputType.text,
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -201,9 +259,21 @@ class _DepartmentPageState extends State<DepartmentPage> {
             ),
             ElevatedButton(
               onPressed: () {
+                if (idController.text.isEmpty || nameController.text.isEmpty) {
+                  _showErrorAlert('Department ID and Name are required.');
+                  return;
+                }
+                if (userRole == 'admin' && userIdController.text.isEmpty) {
+                  _showErrorAlert('User ID is required for admin.');
+                  return;
+                }
                 Navigator.of(context).pop();
                 if (departmentId == null) {
-                  _addDepartment(idController.text, nameController.text);
+                  _addDepartment(
+                    idController.text,
+                    nameController.text,
+                    userRole == 'admin' ? userIdController.text : null,
+                  );
                 } else {
                   _updateDepartment(departmentId, nameController.text);
                 }
@@ -215,6 +285,8 @@ class _DepartmentPageState extends State<DepartmentPage> {
       },
     );
   }
+
+
 
   void _showSuccessAlert(String message) {
     showDialog(
@@ -240,7 +312,7 @@ class _DepartmentPageState extends State<DepartmentPage> {
     // Assume that the current user's email is stored in a variable called `userEmail`.
     // Fetch user email from storage (adjust according to your storage mechanism)
      // Replace with actual email fetching logic
-
+    TextEditingController userIdController = TextEditingController();
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -255,10 +327,41 @@ class _DepartmentPageState extends State<DepartmentPage> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
+            if (userRole == 'admin') // Only render for admin users
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: TextField(
+                      controller: userIdController,
+                      decoration: InputDecoration(
+                        labelText: 'Enter User ID',
+                        border: OutlineInputBorder(),
+                        filled: true,
+                        fillColor: Colors.grey[200],
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      final userId = userIdController.text.trim();
+                      if (userId.isNotEmpty) {
+                        _fetchDepartments(userId: userId);
+                      } else {
+                        _showErrorAlert('User ID cannot be empty.');
+                      }
+                    },
+                    child: Text('Fetch Departments'),
+                  ),
+                ],
+              ),
+
             TextField(
               onChanged: _filterDepartments,
               decoration: InputDecoration(
-                labelText: 'Search by Department ID', // Update the label text
+                labelText: 'Search by Department Name or ID', // Updated label text
                 border: OutlineInputBorder(),
                 filled: true,
                 fillColor: Colors.grey[200],
@@ -266,28 +369,65 @@ class _DepartmentPageState extends State<DepartmentPage> {
             ),
             SizedBox(height: 10),
             Expanded(
-              child: filteredDepartments.isEmpty
+              child: filteredDepartments.isEmpty && searchQuery.isNotEmpty
                   ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'No data uploaded for departments.',
+                      'No department found for the given search.',
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
                     SizedBox(height: 10),
                     Text(
-                      'You can upload an XML file to get department data by clicking the blue icon button below.',
+                      'Please try a different search query.',
                       style: TextStyle(fontSize: 16),
                       textAlign: TextAlign.center,
                     ),
-                    SizedBox(height: 10),
-                    Text(
-                      'Alternatively, you can add data manually.',
-                      style: TextStyle(fontSize: 16),
-                      textAlign: TextAlign.center,
-                    ),
+                  ],
+                ),
+              )
+                  : filteredDepartments.isEmpty && searchQuery.isEmpty
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (userRole == 'admin')
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'No data available for departments.',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            'Enter the User ID to fetch the data or manually add departments with UserID',
+                            style: TextStyle(fontSize: 16),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: 10),
+                        ],
+                      )
+                    else
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'No data available for departments. \nYou can upload an XML file to get department data by clicking the blue icon button below',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            'You can add data manually.',
+                            style: TextStyle(fontSize: 16),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               )
@@ -335,7 +475,7 @@ class _DepartmentPageState extends State<DepartmentPage> {
                                   context,
                                   'Delete Department',
                                   'Are you sure you want to delete this department?',
-                                      () => _deleteDepartment(department['id'].toString()),
+                                      () => _deleteDepartment(department['_id'].toString()),
                                 );
                               },
                             ),
@@ -370,22 +510,63 @@ class _DepartmentPageState extends State<DepartmentPage> {
                 context,
                 MaterialPageRoute(builder: (context) => Departmentxmlupload()),
               );
+              _fetchDepartments();
             },
           ),
         ],
       ),
     );
   }
+
+  // void _filterDepartments(String query) {
+  //   setState(() {
+  //     searchQuery = query;
+  //
+  //     // Filter departments by ID and ensure case insensitivity
+  //     filteredDepartments = departments
+  //         .where((department) =>
+  //         department['id']
+  //             .toString()
+  //             .toLowerCase()
+  //             .contains(query.toLowerCase()))
+  //         .toList();
+  //
+  //     // Show SnackBar if no matching departments are found
+  //     if (filteredDepartments.isEmpty && query.isNotEmpty) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(
+  //           content: Text('No department found for the given search.'),
+  //           duration: Duration(seconds: 2),
+  //         ),
+  //       );
+  //     }
+  //   });
+  // }
   void _filterDepartments(String query) {
     setState(() {
       searchQuery = query;
-      filteredDepartments = departments
-          .where((department) =>
-          department['id'].toString().contains(query)) // Filtering by Department ID
-          .toList();
+
+      // Filter departments by name or ID, ensuring case insensitivity
+      filteredDepartments = departments.where((department) {
+        final departmentId = department['id'].toString().toLowerCase();
+        final departmentName = department['name'].toString().toLowerCase();
+        final searchQueryLower = query.toLowerCase();
+
+        return departmentId.contains(searchQueryLower) ||
+            departmentName.contains(searchQueryLower);
+      }).toList();
+
+      // Show SnackBar if no matching departments are found
+      if (filteredDepartments.isEmpty && query.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No department found for the given search.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     });
   }
-
   Future<void> _deleteDepartment(String id) async {
     setState(() {
       isLoading = true;

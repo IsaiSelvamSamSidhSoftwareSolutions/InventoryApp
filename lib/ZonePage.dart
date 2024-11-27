@@ -535,6 +535,7 @@
 //     );
 //   }
 // }
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -594,6 +595,7 @@ class _ZoneManagementScreenState extends State<ZonePage> {
       setState(() => isLoading = false);
     }
   }
+
   Future<String?> _getUserId() async {
     String? userId;
     await showDialog(
@@ -624,18 +626,9 @@ class _ZoneManagementScreenState extends State<ZonePage> {
     );
     return userId; // Return the User ID or null if canceled
   }
-  Future<void> _addZone(String description) async {
-    String? userId;
 
-    // Only prompt for User ID if the user is an admin
-    if (userRole == 'admin') {
-      userId = await _getUserId(); // Prompt for User ID
-      if (userId == null || userId.isEmpty) {
-        _showErrorMessage('User ID is required for admin users to add a zone.');
-        return; // Exit if no User ID is provided
-      }
-    }
-
+// Function to add a new zone
+  Future<void> _addZone(String description, {String? userId}) async {
     setState(() => isLoading = true);
 
     String url = 'https://iscandata.com/api/v1/zones';
@@ -644,7 +637,8 @@ class _ZoneManagementScreenState extends State<ZonePage> {
     // Prepare the request body
     Map<String, dynamic> body = {
       'description': description,
-      if (userRole == 'admin' && userId != null) 'user': userId, // Include 'user' only if admin
+      if (userRole == 'admin' && userId != null) 'user': userId,
+      // Include 'user' only if admin
     };
 
     try {
@@ -661,7 +655,9 @@ class _ZoneManagementScreenState extends State<ZonePage> {
         _fetchZones(); // Refresh the list of zones
         _showSuccessMessage('Zone added successfully.');
       } else {
-        _showErrorMessage('Error adding zone: ${response.body}');
+        var errorMessage = jsonDecode(response.body)['message'] ??
+            'Error adding zone.';
+        _showErrorMessage(errorMessage);
       }
     } catch (e) {
       _showErrorMessage('Error: $e');
@@ -671,7 +667,8 @@ class _ZoneManagementScreenState extends State<ZonePage> {
   }
 
   // Update a zone
-  Future<void> _updateZone(String idOrName, String description, {bool byName = false}) async {
+  Future<void> _updateZone(String idOrName, String description,
+      {bool byName = false}) async {
     setState(() => isLoading = true);
 
     String url = byName
@@ -745,35 +742,82 @@ class _ZoneManagementScreenState extends State<ZonePage> {
       setState(() => isLoading = false);
     }
   }
-
-  // Show a dialog for adding or updating a zone
   void _showZoneDialog({String? id, String? existingDescription}) {
     final descriptionController = TextEditingController(text: existingDescription);
+    final userIdController = TextEditingController(); // Controller for User ID
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: Text(id == null ? 'Add Zone' : 'Update Zone'),
-          content: TextField(
-            controller: descriptionController,
-            decoration: InputDecoration(labelText: 'Description'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (userRole == 'admin') // Show User ID field only for admin
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: userIdController,
+                        decoration: InputDecoration(
+                          labelText: 'User ID',
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.grey[200],
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                    ],
+                  ),
+                TextField(
+                  controller: descriptionController,
+                  decoration: InputDecoration(
+                    labelText: 'Zone Description',
+                    border: OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.grey[200],
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Cancel'),
+            ),
+            TextButton(
               onPressed: () {
-                if (id == null) {
-                  _addZone(descriptionController.text);
-                } else {
-                  _updateZone(id, descriptionController.text);
+                final description = descriptionController.text.trim();
+                final userId = userIdController.text.trim();
+
+                // Validate fields
+                if (description.isEmpty) {
+                  _showErrorMessage('Zone Description is required.');
+                  return;
                 }
+                if (userRole == 'admin' && userId.isEmpty) {
+                  _showErrorMessage('User ID is required for admin users.');
+                  return;
+                }
+
+                if (id == null) {
+                  // Add Zone
+                  if (userRole == 'admin') {
+                    _addZone(description, userId: userId);
+                  } else {
+                    _addZone(description);
+                  }
+                } else {
+                  // Update Zone
+                  _updateZone(id, description);
+                }
+
                 Navigator.of(context).pop();
               },
               child: Text(id == null ? 'Add' : 'Update'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel'),
             ),
           ],
         );
@@ -781,13 +825,21 @@ class _ZoneManagementScreenState extends State<ZonePage> {
     );
   }
 
-  void _showSuccessMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _showErrorMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
 
-  void _showErrorMessage(String message) {
-    print('Error: $message');
+  void _showSuccessMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)));
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -797,12 +849,96 @@ class _ZoneManagementScreenState extends State<ZonePage> {
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
-            onPressed: _fetchZones,
+            onPressed: () {
+              if (userRole == 'admin') {
+                if (userIdController.text.isNotEmpty) {
+                  _fetchZones();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('Please enter a User ID to refresh.')),
+                  );
+                }
+              } else {
+                _fetchZones();
+              }
+            },
           ),
         ],
       ),
       body: isLoading
           ? Center(child: CircularProgressIndicator())
+          : zones.isEmpty
+          ? Center(
+        child: userRole == 'admin'
+            ? Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'No zones available.',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch, // Makes the button full-width
+                children: [
+                  TextField(
+                    controller: userIdController,
+                    decoration: InputDecoration(
+                      labelText: 'Enter User ID',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  SizedBox(height: 10), // Add spacing between the TextField and the button
+                  ElevatedButton(
+                    onPressed: () {
+                      if (userIdController.text.isNotEmpty) {
+                        _fetchZones();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Please enter a User ID to refresh.')),
+                        );
+                      }
+                    },
+                    child: Text('Get Zones'),
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Admin should enter the User ID to fetch and add new zones.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16),
+            ),
+          ],
+        )
+            : Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'No zones available.',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Please add zones to proceed.',
+              style: TextStyle(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => _showZoneDialog(),
+              child: Text('Add Zone'),
+            ),
+          ],
+        ),
+      )
           : Column(
         children: [
           if (userRole == 'admin')
@@ -812,14 +948,16 @@ class _ZoneManagementScreenState extends State<ZonePage> {
                 controller: userIdController,
                 decoration: InputDecoration(
                   labelText: 'Enter User ID',
+                  border: OutlineInputBorder(),
                   suffixIcon: IconButton(
                     icon: Icon(Icons.search_outlined),
                     onPressed: () {
                       if (userIdController.text.isNotEmpty) {
-                        _fetchZones(); // Refresh zones based on User ID
+                        _fetchZones();
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Please enter a User ID to refresh.')),
+                          SnackBar(content: Text(
+                              'Please enter a User ID to refresh.')),
                         );
                       }
                     },
@@ -834,16 +972,33 @@ class _ZoneManagementScreenState extends State<ZonePage> {
                 final zone = zones[index];
                 return Card(
                   child: ListTile(
-                    title: Text(zone['description']),
+                    title: Text(
+                      zone['description'],
+                      style: TextStyle(
+                        fontSize: 18, // Adjust the size
+                        fontWeight: FontWeight.bold, // Make it bold
+                        color: Colors.black, // Set the color
+                      ),
+                    ),
+                    subtitle: Text(
+                      zone['name'],
+                      style: TextStyle(
+                        fontSize: 16, // Slightly smaller font size
+                        fontWeight: FontWeight.w400, // Regular weight
+                        color: Colors.grey[600], // Subtle grey for contrast
+                        fontStyle: FontStyle.italic, // Optional italic style for variation
+                      ),
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
                           icon: Icon(Icons.edit),
-                          onPressed: () => _showZoneDialog(
-                            id: zone['_id'],
-                            existingDescription: zone['description'],
-                          ),
+                          onPressed: () =>
+                              _showZoneDialog(
+                                id: zone['_id'],
+                                existingDescription: zone['description'],
+                              ),
                         ),
                         if (userRole == 'admin')
                           IconButton(

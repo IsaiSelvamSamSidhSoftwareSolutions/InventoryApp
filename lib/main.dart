@@ -8,12 +8,14 @@ import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
 
 // Import your pages and other components
+import 'AcceptSubscriptionrequest..dart';
 import 'FreeTrail.dart';
 import 'ActiveDevice.dart';
 import 'Reports/ClientReport.dart';
 import 'Reports/Report.dart';
 import 'Reports/Nof_Genereatedreport.dart';
 import 'Reports/Department_general_report.dart';
+import 'Reports/SubscriptionStatus.dart';
 import 'Reports/Zone_and_dep_report.dart';
 import 'ZonePage.dart';
 import 'Auth/heartbeat_task.dart';
@@ -30,7 +32,7 @@ import 'Plans.dart';
 import 'Auth/deleteAccount.dart';
 import 'BarCodeScanner/Zonefetch.dart';
 import 'Subscriptions.dart';
-
+import 'Admins_Plans.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -99,6 +101,9 @@ class MyApp extends StatelessWidget {
         '/DeleteAccount': (context) => DeleteAccountPage(),
         '/User  ListScreen' : (context) => UserListScreen(),
         '/ReportScreen' : (context) => ReportPageClient(),// Add FreeTrial route
+        '/Admins_Plans' : (context) => AdminPlanCreation(),// Add FreeTrial route
+        '/SubscriptionStatus' : (context) => SubscriptionStatus(),// Add FreeTrial route
+        '/AcceptSubscriptionrequest' : (context) => AcceptSubscriptionRequest(),// Add FreeTrial route
       },
     );
   }
@@ -118,6 +123,7 @@ class _PermissionCheckerState extends State<PermissionChecker> {
   @override
   void initState() {
     super.initState();
+    checkSession();
     print("Starting permission check...");
     checkPermissions();
   }
@@ -449,11 +455,14 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Text('No'),
               ),
               TextButton(
-                onPressed: () {
+                onPressed: () async {
                   final box = GetStorage();
-                  box.write('logout_needed', true); // Save the logout_needed flag
+                  // box.write('logout_needed', true); // Save the logout_needed flag
+                  // Navigator.of(context).pop(true);
+                  // await _logout(); // Call the logout function// Close the dialog
+                  // Navigator.pushReplacementNamed(context, '/login'); // Navigate to LoginPage
                   Navigator.of(context).pop(true); // Close the dialog
-                  Navigator.pushReplacementNamed(context, '/login'); // Navigate to LoginPage
+                  await _logout(); // Call the logout function
                 },
                 child: Text('Yes'),
               ),
@@ -488,41 +497,37 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 ),
               ),
-              ListTile(
-                leading: Icon(Icons.add_chart),
-                title: Text('client Report'),
-                onTap: () {
-                  Navigator.pushNamed(context, '/ReportScreen');
-                },
-              ),
-              // ListTile(
-              //   leading: Icon(Icons.add_chart),
-              //   title: Text('Full Report'),
-              //   onTap: () {
-              //     Navigator.pushNamed(context, '/Fullreport');
-              //   },
-              // ),
-              // ListTile(
-              //   leading: Icon(Icons.file_open),
-              //   title: Text('Not on File'),
-              //   onTap: () {
-              //     Navigator.pushNamed(context, '/Nof_ReportPage');
-              //   },
-              // ),
-              // ListTile(
-              //   leading: Icon(Icons.area_chart),
-              //   title: Text('Department Report'),
-              //   onTap: () {
-              //     Navigator.pushNamed(context, '/departmentReport');
-              //   },
-              // ),
-              // ListTile(
-              //   leading: Icon(Icons.map),
-              //   title: Text('Zone and Department Report'),
-              //   onTap: () {
-              //     Navigator.pushNamed(context, '/zoneAndDepReport');
-              //   },
-              // ),
+
+              if (userRole == 'admin') ...[
+                ListTile(
+                  leading: Icon(Icons.add_chart),
+                  title: Text('Detail Zones Report'),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/Fullreport');
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.file_open),
+                  title: Text('Not on File'),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/Nof_ReportPage');
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.area_chart),
+                  title: Text('Department Report'),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/departmentReport');
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.map),
+                  title: Text('Zone and Department Report'),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/zoneAndDepReport');
+                  },
+                ),
+              ],
               ListTile(
                 leading: Icon(Icons.timer),
                 title: Text('Scanning Time Report'),
@@ -538,26 +543,64 @@ class _DashboardPageState extends State<DashboardPage> {
                 },
               ),
               ListTile(
-                leading: Icon(Icons.wallet_rounded),
-                title: Text('Plans'),
-                onTap: () {
-                  Navigator.pushNamed(context, '/Plans');
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.wallet_rounded),
-                title: Text('Subcriptions'),
-                onTap: () {
-                  Navigator.pushNamed(context, '/Subscriptions');
-                },
-              ),
-              ListTile(
                 leading : Icon(Icons.delete, color: Colors.redAccent), // Icon for delete account
                 title: Text('Delete Account', style: TextStyle(color: Colors.redAccent)),
                 onTap: () {
                   Navigator.pushNamed(context, '/DeleteAccount'); // Navigate to DeleteAccountPage
                 },
               ),
+              if (userRole == 'admin') ...[
+                ListTile(
+                  leading: Icon(Icons.add_alert),
+                  title: Text('Accept Subscription request'),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/AcceptSubscriptionrequest');
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.wallet_rounded),
+                  title: Text('List of Plans'),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/Admins_Plans');
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.pending_actions_outlined),
+                  title: Text('SubscriptionStatus'),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/SubscriptionStatus');
+                  },
+                ),
+                // ListTile(
+                //   leading : Icon(Icons.delete, color: Colors.redAccent), // Icon for delete account
+                //   title: Text('Delete Account', style: TextStyle(color: Colors.redAccent)),
+                //   onTap: () {
+                //     Navigator.pushNamed(context, '/DeleteAccount'); // Navigate to DeleteAccountPage
+                //   },
+                // ),
+              ]else ...[
+                ListTile(
+                  leading: Icon(Icons.add_chart),
+                  title: Text('Complete Report'),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/ReportScreen');
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.wallet_rounded),
+                  title: Text('Plans'),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/Plans');
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.wallet_rounded),
+                  title: Text('Subscriptions'),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/Subscriptions');
+                  },
+                ),
+              ],
             ],
           ),
         ),
@@ -614,7 +657,7 @@ void callbackDispatcher() {
 
             } else {
               print("Received status code: ${response.statusCode}. Checking if logout is needed.");
-              handleApiError(response, box); // Handle API errors
+              handleApiError(response, box as BuildContext); // Handle API errors
             }
           } catch (e) {
             // Handle any exceptions during the API call
@@ -635,18 +678,57 @@ void callbackDispatcher() {
     return Future.value(true);  // Indicate task completion
   });
 }
+//
+// // Function to handle API errors and logout logic
+// void handleApiError(http.Response response, GetStorage box) {
+//   if (response.body.contains('Token is blacklisted')) {
+//     box.write('logout_needed', true);  // Indicate that logout is needed
+//     handleLogout();  // Trigger logout immediately if token is blacklisted
+//     notifyUser("Session expired. Please log in again.");
+//   } else {
+//     box.write('logout_needed', true);  // Indicate that logout is needed
+//
+//   }
+// }
+void handleApiError(http.Response response, BuildContext context) {
+  final box = GetStorage();
 
-// Function to handle API errors and logout logic
-void handleApiError(http.Response response, GetStorage box) {
   if (response.body.contains('Token is blacklisted')) {
-    box.write('logout_needed', true);  // Indicate that logout is needed
-    handleLogout();  // Trigger logout immediately if token is blacklisted
-    notifyUser("Session expired. Please log in again.");
+    box.write('logout_needed', true); // Indicate that logout is needed
+    _showSessionExpiredPopup(context); // Pass the BuildContext correctly
   } else {
-    box.write('logout_needed', true);  // Indicate that logout is needed
-
+    box.write('logout_needed', true); // Set the logout flag for other cases
   }
 }
+
+void _showSessionExpiredPopup(BuildContext context) {
+  showDialog(
+    context: context,
+    barrierDismissible: false, // Prevent closing the dialog by tapping outside
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: Text(
+          'Session Expired',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Text('Your session has expired. You need to log in again.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(); // Close the dialog
+              handleLogout(context); // Proceed to logout and navigate to login
+            },
+            child: Text(
+              'Yes',
+              style: TextStyle(color: Colors.blue),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 
 // Function to notify the user (consider using a local notification package or dialog)
 void notifyUser(String message) {

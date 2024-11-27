@@ -87,7 +87,7 @@ class _LoginPageState extends State<LoginPage> {
             )),
           );
         }
-
+        Navigator.pushReplacementNamed(context, '/dashboard');
       } else {
         var jsonResponse = json.decode(response.body);
         setState(() {

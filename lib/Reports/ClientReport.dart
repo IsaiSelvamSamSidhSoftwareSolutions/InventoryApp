@@ -139,6 +139,13 @@ class _ReportGeneratorState extends State<ReportGenerator> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Report Generator'),
+        backgroundColor: Colors.blueAccent,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -206,63 +213,88 @@ String getCurrentDateTime() {
   DateTime now = DateTime.now();
   return "${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')}/${now.year} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
 }
+
 class DetailZonesReportTable extends StatelessWidget {
   final List<dynamic> reportData;
 
   DetailZonesReportTable({required this.reportData});
 
-
   @override
   Widget build(BuildContext context) {
-    List<DataRow> rows = [];
+    List<Widget> zoneTables = [];
 
     for (var zone in reportData) {
+      List<DataRow> rows = [];
+      int totalQty = 0;
+      double totalRetail = 0.0;
+
       for (var device in zone['devices']) {
         for (var product in device['products']) {
+          int productQty = product['totalQty'] ?? 0;
+          double productRetail = product['totalRetail']?.toDouble() ?? 0.0;
+
+          totalQty += productQty;
+          totalRetail += productRetail;
+
           rows.add(DataRow(
             cells: [
-              DataCell(Text(zone['zoneName'] ?? '')),
-              DataCell(Text(zone['zoneDescription'] ?? '')),
               DataCell(Text(product['upc'] ?? '')),
               DataCell(Text(product['description'] ?? '')),
-              DataCell(Text((product['totalQty'] ?? 0).toString())),
-              DataCell(Text((product['totalRetail'] ?? 0.0).toStringAsFixed(2))),
+              DataCell(Text(productQty.toString())),
+              DataCell(Text(productRetail.toStringAsFixed(2))),
             ],
           ));
         }
       }
+
+      // Add totals row only once after each zone data
+      rows.add(DataRow(
+        cells: [
+          DataCell(Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold))),
+          DataCell(Text('')),
+          DataCell(Text(totalQty.toString(), style: TextStyle(fontWeight: FontWeight.bold))),
+          DataCell(Text(totalRetail.toStringAsFixed(2), style: TextStyle(fontWeight: FontWeight.bold))),
+        ],
+      ));
+
+      // Create DataTable for each zone
+      zoneTables.add(Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Zone Header
+          Text(
+            '${zone['zoneName']} - ${zone['zoneDescription']}',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          // Data Table
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: [
+                DataColumn(label: Text('UPC#')),
+                DataColumn(label: Text('Description')),
+                DataColumn(label: Text('Qty')),
+                DataColumn(label: Text('Total Retail')),
+              ],
+              rows: rows,
+            ),
+          ),
+          SizedBox(height: 16), // Spacing between zones
+        ],
+      ));
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Header for the entire table
         Text(
-          'Detail Zones Report',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          'Detail Zones Report Table \n [Zone#] [zone name custom label] [UPC#] [Description] [Qty] [Total Retail]',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
         ),
-        Text(
-          'REPORTS GENERATED ON: ${getCurrentDateTime()}',
-          style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
-        ),
-        SizedBox(height: 8), // Add some spacing
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              DataColumn(label: Text('Zone Name')),
-              DataColumn(label: Text('Zone Description')),
-              DataColumn(label: Text('UPC#')),
-              DataColumn(label: Text('Description')),
-              DataColumn(label: Text('Qty')),
-              DataColumn(label: Text('Total Retail')),
-            ],
-            rows: rows,
-            dataRowColor: MaterialStateProperty.resolveWith((states) {
-              return states.contains(MaterialState.selected) ? null : Colors.grey[200];
-            }),
-            dataRowHeight: 40,
-          ),
-        ),
+        SizedBox(height: 16),
+        ...zoneTables,
       ],
     );
   }
@@ -274,57 +306,106 @@ class ZonesGeneralReportTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    List<DataRow> rows = [];
+    List<Widget> zoneTables = [];
 
     for (var zone in reportData) {
+      List<DataRow> rows = [];
+      // int totalQty = 0;
+      // double totalRetail = 0.0;
+      int totalQty = 0;  // Change to num if necessary
+      double totalRetail = 0.0;  // Already fine for floating-point calculations
+
+      Map<int, Map<String, dynamic>> departmentTotals = {};
+
       for (var device in zone['devices']) {
         for (var product in device['products']) {
-          rows.add(DataRow(
-            cells: [
-              DataCell(Text(zone['zoneName'] ?? '')),
-              DataCell(Text(zone['zoneDescription'] ?? '')),
-              DataCell(Text(product['upc'] ?? '')),
-              DataCell(Text(product['description'] ?? '')),
-              DataCell(Text((product['totalRetail']?.toStringAsFixed(2) ?? '0.00'))),
-            ],
-          ));
+          int departmentId = product['departmentId'] ?? 0;
+          String departmentName = product['departmentName'] ?? 'Unknown';
+          int qty = product['totalQty'] ?? 0;
+          double retail = product['totalRetail']?.toDouble() ?? 0.0;
+
+          // Aggregate data by department
+          if (!departmentTotals.containsKey(departmentId)) {
+            departmentTotals[departmentId] = {
+              'departmentName': departmentName,
+              'totalQty': 0,
+              'totalRetail': 0.0,
+            };
+          }
+
+          departmentTotals[departmentId]!['totalQty'] += qty;
+          departmentTotals[departmentId]!['totalRetail'] += retail;
         }
       }
+
+      // Generate rows for the department
+      departmentTotals.forEach((departmentId, totals) {
+        rows.add(DataRow(
+          cells: [
+            DataCell(Text(departmentId.toString())), // Department ID
+            DataCell(Text(totals['departmentName'])), // Department Name
+            DataCell(Text(totals['totalQty'].toString())), // Qty
+            DataCell(Text(totals['totalRetail'].toStringAsFixed(2))), // Total Retail
+          ],
+        ));
+        num totalQty = 0;  // Compatible with both int and double
+        totalQty += totals['totalQty'];  // Works seamlessly// totals['totalQty'] is likely a num
+        totalRetail += totals['totalRetail'];
+      });
+
+      // Add total row for the zone
+      rows.add(DataRow(
+        cells: [
+          DataCell(Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold))),
+          DataCell(Text('')),
+          DataCell(Text(totalQty.toString(), style: TextStyle(fontWeight: FontWeight.bold))),
+          DataCell(Text(totalRetail.toStringAsFixed(2), style: TextStyle(fontWeight: FontWeight.bold))),
+        ],
+      ));
+
+      // Create DataTable for each zone
+      zoneTables.add(Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Zone Header
+          Text(
+            '${zone['zoneName']} - ${zone['zoneDescription']}',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          // Data Table
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: [
+                DataColumn(label: Text('Department ID')),
+                DataColumn(label: Text('Department Name')),
+                DataColumn(label: Text('Qty')),
+                DataColumn(label: Text('Total Retail')),
+              ],
+              rows: rows,
+            ),
+          ),
+          SizedBox(height: 16), // Spacing between zones
+        ],
+      ));
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Add the report header
         Text(
-          'Zones General Report',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          'Zones General Report Table \n [Zone#] [Departments with counted products] [Qty] [Total Retail]',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
         ),
-        SizedBox(height: 8),
-        Text(
-          'REPORTS GENERATED ON: ${getCurrentDateTime()}',
-          style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
-        ),// Add some spacing
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              DataColumn(label: Text('Zone Name')),
-              DataColumn(label: Text('Zone Description')),
-              DataColumn(label: Text('UPC#')),
-              DataColumn(label: Text('Description')),
-              DataColumn(label: Text('Total Retail')),
-            ],
-            rows: rows,
-            dataRowColor: MaterialStateProperty.resolveWith((states) {
-              return states.contains(MaterialState.selected) ? null : Colors.grey[200];
-            }),
-            dataRowHeight: 40,
-          ),
-        ),
+        SizedBox(height: 16),
+        ...zoneTables,
       ],
     );
   }
 }
+
 class DepartmentGeneralReportTable extends StatelessWidget {
   final List<dynamic> reportData;
 
@@ -338,63 +419,90 @@ class DepartmentGeneralReportTable extends StatelessWidget {
       for (var device in zone['devices']) {
         for (var product in device['products']) {
           int departmentId = product['departmentId'] ?? 0;
-          String departmentName = product['departmentName'] ?? '';
-          int totalQty = product['totalQty'] ?? 0;
-          double totalRetail = product['totalRetail']?.toDouble() ?? 0.0;
+          String departmentName = product['departmentName'] ?? 'Unknown';
+          int qty = product['totalQty'] ?? 0;
+          double retail = product['totalRetail']?.toDouble() ?? 0.0;
 
           if (!departmentTotals.containsKey(departmentId)) {
             departmentTotals[departmentId] = {
               'departmentName': departmentName,
-              'totalQuantity': 0 ,
+              'totalQuantity': 0,
               'totalRetail': 0.0,
             };
           }
 
-          departmentTotals[departmentId]!['totalQuantity'] += totalQty;
-          departmentTotals[departmentId]!['totalRetail'] += totalRetail;
+          departmentTotals[departmentId]!['totalQuantity'] += qty;
+          departmentTotals[departmentId]!['totalRetail'] += retail;
         }
       }
     }
 
-    List<DataRow> rows = departmentTotals.entries.map((entry) {
-      return DataRow(
+    List<Widget> departmentTables = [];
+
+    departmentTotals.forEach((departmentId, totals) {
+      List<DataRow> rows = [];
+
+      rows.add(DataRow(
         cells: [
-          DataCell(Text(entry.value['departmentName'] ?? '')),
-          DataCell(Text(entry.key.toString())), // Department Id
-          DataCell(Text(entry.value['totalQuantity'].toString())),
-          DataCell(Text(entry.value['totalRetail'].toStringAsFixed(2))),
+          DataCell(Text(departmentId.toString())), // Department ID
+          DataCell(Text(totals['departmentName'])), // Department Name
+          DataCell(Text(totals['totalQuantity'].toString())), // Qty
+          DataCell(Text(totals['totalRetail'].toStringAsFixed(2))), // Total Retail
         ],
-      );
-    }).toList();
+      ));
+
+      // Add totals row for the department
+      rows.add(DataRow(
+        cells: [
+          DataCell(Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold))),
+          DataCell(Text('')),
+          DataCell(Text(
+            totals['totalQuantity'].toString(),
+            style: TextStyle(fontWeight: FontWeight.bold),
+          )),
+          DataCell(Text(
+            totals['totalRetail'].toStringAsFixed(2),
+            style: TextStyle(fontWeight: FontWeight.bold),
+          )),
+        ],
+      ));
+
+      // Add each department's table
+      departmentTables.add(Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${totals['departmentName']} (Department ID: $departmentId)',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: [
+                DataColumn(label: Text('Department ID')),
+                DataColumn(label: Text('Department Name')),
+                DataColumn(label: Text('Qty')),
+                DataColumn(label: Text('Total Retail')),
+              ],
+              rows: rows,
+            ),
+          ),
+          SizedBox(height: 16),
+        ],
+      ));
+    });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Add the table header
         Text(
-          'Department General Report',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          'Department General -[Dept#] [Department Name] [Qty] [Total Retail]',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
         ),
-        Text(
-          'REPORTS GENERATED ON: ${getCurrentDateTime()}',
-          style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
-        ),
-        SizedBox(height: 8), // Add some spacing
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              DataColumn(label: Text('Department Name')),
-              DataColumn(label: Text('Department Id')),
-              DataColumn(label: Text('Qty')),
-              DataColumn(label: Text('Total Retail')),
-            ],
-            rows: rows,
-            dataRowColor: MaterialStateProperty.resolveWith((states) {
-              return states.contains(MaterialState.selected) ? null : Colors.grey[200];
-            }),
-            dataRowHeight: 40,
-          ),
-        ),
+        SizedBox(height: 16),
+        ...departmentTables,
       ],
     );
   }
@@ -406,62 +514,93 @@ class NofReportTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    List<DataRow> rows = [];
+    List<Widget> zoneTables = [];
 
     for (var zone in reportData) {
+      List<DataRow> rows = [];
+      int totalQty = 0;
+      double totalRetail = 0.0;
+
       for (var device in zone['devices']) {
-        if (device['products'] != null) {
-          for (var product in device['products']) {
-            // Debugging prints
-            print('Product UPC: ${product['upc']}');
-            print('Retail Price: ${product['retailPrice']}');
-            print('Total Retail: ${product['totalRetail']}');
-            rows.add(DataRow(
-              cells: [
-                DataCell(Text(product['departmentId']?.toString() ?? '')), // Dept #
-                DataCell(Text(product['departmentName'] ?? '')), // Department Name
-                DataCell(Text(product['upc'] ?? '')), // UPC#
-                DataCell(Text((product['totalQty'] ?? 0).toString())), // Qty
-                // DataCell(Text((double.tryParse(product['retailPrice'].toString()) ?? 0.0).toStringAsFixed(2))), // Retail $
-                DataCell(Text(product['retailPrice'] != null ? product['retailPrice'].toString() : 'N/A')),
-                DataCell(Text((double.tryParse(product['totalRetail'].toString()) ?? 0.0).toStringAsFixed(2))), // Retail Total $
-              ],
-            ));
-          }
+        for (var product in device['products']) {
+          int productQty = product['totalQty'] ?? 0;
+          double productRetail = product['totalRetail']?.toDouble() ?? 0.0;
+
+          totalQty += productQty;
+          totalRetail += productRetail;
+
+          rows.add(DataRow(
+            cells: [
+              DataCell(Text(product['departmentId']?.toString() ?? '')), // Dept #
+              DataCell(Text(product['departmentName'] ?? 'Unknown')), // Department Name
+              DataCell(Text(product['upc'] ?? '')), // UPC#
+              DataCell(Text(productQty.toString())), // Qty
+              DataCell(Text(product['retailPrice'] != null
+                  ? product['retailPrice'].toString()
+                  : 'N/A')), // Retail
+              DataCell(Text(productRetail.toStringAsFixed(2))), // Retail Total
+            ],
+          ));
         }
       }
+
+      // Add totals row for the zone
+      rows.add(DataRow(
+        cells: [
+          DataCell(Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold))),
+          DataCell(Text('')),
+          DataCell(Text('')),
+          DataCell(Text(
+            totalQty.toString(),
+            style: TextStyle(fontWeight: FontWeight.bold),
+          )),
+          DataCell(Text('')),
+          DataCell(Text(
+            totalRetail.toStringAsFixed(2),
+            style: TextStyle(fontWeight: FontWeight.bold),
+          )),
+        ],
+      ));
+
+      // Create DataTable for each zone
+      zoneTables.add(Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Zone Header
+          Text(
+            '${zone['zoneName']} - ${zone['zoneDescription']}',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: [
+                DataColumn(label: Text('Dept #')),
+                DataColumn(label: Text('Department Name')),
+                DataColumn(label: Text('UPC#')),
+                DataColumn(label: Text('Qty')),
+                DataColumn(label: Text('Retail')),
+                DataColumn(label: Text('Retail Total')),
+              ],
+              rows: rows,
+            ),
+          ),
+          SizedBox(height: 16), // Spacing between zones
+        ],
+      ));
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Add the table header
         Text(
-          'NOF Report',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          'Nof Report [Dept #] [Department Name] [UPC#] [Qty] [Retail] [Retail Total]',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
         ),
-        Text(
-          'REPORTS GENERATED ON: ${getCurrentDateTime()}',
-          style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
-        ),
-        SizedBox(height: 8), // Add some spacing
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              DataColumn(label: Text('Dept #')),
-              DataColumn(label: Text('Department Name')),
-              DataColumn(label: Text('UPC#')),
-              DataColumn(label: Text('Qty')),
-              DataColumn(label: Text('Retail')),
-              DataColumn(label: Text('Retail Total')),
-            ],
-            rows: rows,
-            dataRowColor: MaterialStateProperty.resolveWith((states) {
-              return states.contains(MaterialState.selected) ? null : Colors.grey[200];
-            }),
-            dataRowHeight: 40,
-          ),
-        ),
+        SizedBox(height: 16),
+        ...zoneTables,
       ],
     );
   }

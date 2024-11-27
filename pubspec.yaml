@@ -49,6 +49,7 @@ dependencies:
   open_file: any
   url_launcher: ^6.3.1
   mailer: ^6.2.0
+  lottie: ^2.3.2
 
 dev_dependencies:
   flutter_test:
@@ -59,7 +60,21 @@ flutter:
   uses-material-design: true
   assets:
     - assets/beep.mp3
-flutter_icons:
-  android: true
+
+flutter_launcher_icons:
+  android: "launcher_icon"
   ios: true
-  image_path: "assets/images/appicon.png"
+  image_path: "assets/scaniconimage.jpg "
+  min_sdk_android: 21 # android min sdk min:16, default 21
+  web:
+    generate: true
+    image_path: "assets/scaniconimage.jpg"
+    background_color: "#hexcode"
+    theme_color: "#hexcode"
+  windows:
+    generate: true
+    image_path: "assets/scaniconimage.jpg"
+    icon_size: 48 # min:48, max:256, default: 48
+  macos:
+    generate: true
+    image_path: "path/to/iscan.png"

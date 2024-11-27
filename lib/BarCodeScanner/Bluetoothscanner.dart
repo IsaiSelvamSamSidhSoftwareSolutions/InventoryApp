@@ -313,10 +313,39 @@ class _BarcodeScanPageState extends State<Bluetoothscanner> {
   }
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Barcode Scanner (Bluetooth)'),
+    return WillPopScope(
+        onWillPop: () async {
+      // Show a confirmation dialog
+      final shouldExit = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Exit App'),
+          content: Text('Do you want to exit the app?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false), // Stay in the app
+              child: Text('No'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true), // Exit the app
+              child: Text('Yes'),
+            ),
+          ],
+        ),
+      );
+      // If shouldExit is true, allow the app to exit
+      return shouldExit ?? false;
+    },
+    child: Scaffold(
+    appBar: AppBar(
+    title: Text('Barcode Scanner (Bluetooth)'),
+      leading: IconButton(
+        icon: Icon(Icons.arrow_back),
+        onPressed: () {
+          Navigator.pop(context);
+        },
       ),
+    ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -508,6 +537,7 @@ class _BarcodeScanPageState extends State<Bluetoothscanner> {
       ]
         )
       ),
+    )
     );
   }
 }
