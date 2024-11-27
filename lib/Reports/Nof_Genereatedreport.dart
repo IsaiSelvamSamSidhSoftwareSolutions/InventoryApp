@@ -189,13 +189,10 @@ class _NofReportPageState extends State<Nof_ReportPage> {
     try {
       final pdf = pw.Document();
 
-      // Flatten the nested structure similar to how the UI processes it
-      final flattenedProducts = reportList.expand((zone) {
-        final devices = zone['devices'] as List<dynamic>? ?? [];
-        return devices.expand((device) {
-          final products = device['products'] as List<dynamic>? ?? [];
-          return products;
-        });
+      // Flatten the nested structure for departments and products
+      final flattenedProducts = reportList.expand((department) {
+        final products = department['products'] as List<dynamic>? ?? [];
+        return products;
       }).toList();
 
       pdf.addPage(
@@ -218,7 +215,7 @@ class _NofReportPageState extends State<Nof_ReportPage> {
                   product['upc'] ?? 'N/A',
                   product['description'] ?? 'N/A',
                   product['totalQty']?.toString() ?? '0',
-                  '\$${product['retailPrice']?.toStringAsFixed(2) ?? '0.00'}',
+                  '\$${double.tryParse(product['retailPrice']?.toString() ?? '0')?.toStringAsFixed(2) ?? '0.00'}',
                 ]).toList(),
                 headerStyle: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
@@ -239,7 +236,9 @@ class _NofReportPageState extends State<Nof_ReportPage> {
               ),
               pw.SizedBox(height: 5),
               pw.Text('Total Qty: ${overallTotals['totalQty'] ?? '0'}'),
-              pw.Text('Total Retail: \$${overallTotals['totalRetail']?.toStringAsFixed(2) ?? '0.00'}'),
+              pw.Text(
+                'Total Retail: \$${double.tryParse(overallTotals['totalRetail']?.toString() ?? '0')?.toStringAsFixed(2) ?? '0.00'}',
+              ),
             ];
           },
         ),
@@ -271,6 +270,7 @@ class _NofReportPageState extends State<Nof_ReportPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to save PDF. Please try again.')),
       );
+      print("PDF ERROR $e");
     }
   }
 
@@ -439,17 +439,7 @@ class _NofReportPageState extends State<Nof_ReportPage> {
                                 fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                         );
-                      } else if (statusCode != 200) {
-                        return Center(
-                          child: Text(
-                            snapshot.data?['message'] ??
-                                'An unexpected error occurred.',
-                            style: TextStyle(fontSize: 16),
-                            textAlign: TextAlign.center,
-                          ),
-                        );
                       }
-
                       final reportData = snapshot.data!['data']['formattedReport']
                       as List<dynamic>;
                       final overallTotals =
@@ -543,9 +533,16 @@ class _NofReportPageState extends State<Nof_ReportPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final snapshot = await _reportData;
+          print("_report Data $snapshot");
           if (snapshot['status'] == 'success') {
-            final reportList = snapshot['data']['reportData'] ?? [];
+            // Correctly extract the formattedReport
+            final reportList = snapshot['data']['formattedReport'] ?? [];
+            print("Report list $reportList");
+
+            // Extract the overall totals
             final overallTotals = snapshot['data']['overallTotals'] ?? {};
+
+            // Generate and save the PDF
             await _generateAndSavePDF(reportList, overallTotals);
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -558,5 +555,4 @@ class _NofReportPageState extends State<Nof_ReportPage> {
         backgroundColor: Colors.blueAccent,
       ),
     );
-  }
-}
+  } }
